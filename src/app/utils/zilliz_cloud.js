@@ -4,6 +4,7 @@ import assert from 'assert';
 const uri = process.env.ZILLIZ_URI;
 const token = process.env.ZILLIZ_TOKEN;
 
+// API機能から各関数を呼び出す。
 // Milvusクライアントを作成
 export const getMilvusClient = () => {
     try {
@@ -19,12 +20,14 @@ export const getMilvusClient = () => {
     }
 }
 
-// ここで実装するのか？API毎に実装するのか？
+// データを挿入
 export const insertData = async (client, collection_name, data_list) => {
     for (const data of data_list) {
         assert(data.vector.length === 384, 'ベクトルの長さが384ではありません'+data.vector.length);
         assert(data.sentence !== undefined, 'sentenceがundefinedです');
-        assert(data.position !== undefined, 'positionがundefinedです');
+        assert(data.sentence_idx !== undefined, 'sentence_idxがundefinedです');
+        assert(data.char_start_idx !== undefined, 'char_start_idxがundefinedです');
+        assert(data.char_end_idx !== undefined, 'char_end_idxがundefinedです');
     }
     
     try {
@@ -46,12 +49,11 @@ export const insertData = async (client, collection_name, data_list) => {
     }
 }
 
-// ここで実装するのか？API毎に実装するのか？
+// データを検索
 export const searchData = async (client, collection_name, searchParams) => {
+    // パラメータ
     const query_vector = searchParams.vector;
     assert(query_vector.length === 384, 'ベクトルの長さが384ではありません');
-
-    // const query_vector = [...Array(384)].map(() => Math.random());
     // optional parameter
     const output_fields = searchParams.output_fields || ['*'];
     const limit = searchParams.limit || 10;
@@ -65,7 +67,7 @@ export const searchData = async (client, collection_name, searchParams) => {
             limit,
             metric_type,
         });
-        console.log(`コレクション "${collection_name}" でデータ検索を実行しました。結果: ${JSON.stringify(res.results)}`);
+        console.log(`コレクション "${collection_name}" でデータ検索を実行しました。`);
         return res;
     } catch (error) {
         console.error(`コレクション "${collection_name}" でデータ検索を実行できませんでした。`, error);
@@ -89,16 +91,31 @@ export const deleteData = async (client, collection_name, id_list) => {
 }
 
 // すべてのデータを取得
+export const getAllDataID = async (client, collection_name) => {
+    try{
+        const res = await client.query({
+            collection_name: collection_name,
+            filter: "primary_key > 0",  // 条件なしならすべて取得
+            output_fields: ["*"],
+          });
+          return res.data.map(item => item.primary_key);
+    } catch (error) {
+        console.error(`コレクション "${collection_name}" で全データIDを取得できませんでした。`, error);
+        throw error;
+    }
+}
+
+// すべてのデータを取得
 export const getAllData = async (client, collection_name) => {
     try{
         const res = await client.query({
             collection_name: collection_name,
             filter: "primary_key > 0",  // 条件なしならすべて取得
-            output_fields: ["primary_key"],
+            output_fields: ["*"],
           });
-          return res.data.map(item => item.primary_key);
+          return res.data;
     } catch (error) {
-        console.error(`コレクション "${collection_name}" でデータを取得できませんでした。`, error);
+        console.error(`コレクション "${collection_name}" で全データを取得できませんでした。`, error);
         throw error;
     }
 }
@@ -120,3 +137,52 @@ export const getAllData = async (client, collection_name) => {
 //         throw error;
 //     }
 // }
+
+
+// 文字Idxから文章Idxを取得
+export const char2sentence = async (client, collection_name, searchParams) => {
+    
+    const filter = searchParams.filter; // 例: "char_start_idx <= XXX AND char_end_idx >= XXX"
+    assert(filter !== undefined, 'filterがundefinedです');
+    const output_fields = searchParams.output_fields || ['*'];
+
+    try{
+    const res = await client.query({
+        collection_name,
+        filter,
+        output_fields,
+        limit: 1
+    });
+    return res.data[0].sentence_idx;
+    } catch (error) {
+        console.error(`コレクション "${collection_name}" でデータを取得できませんでした。`, error);
+        throw error;
+    }
+}
+
+// 文章Idxから文字Idxを取得
+export const sentence2char = async (client, collection_name, searchParams) => {
+    const filter = searchParams.filter; // 例: "char_start_idx <= XXX AND char_end_idx >= XXX"
+    assert(filter !== undefined, 'filterがundefinedです');
+    const output_fields = searchParams.output_fields || ['*'];
+    const limit = searchParams.limit || 1;
+
+    try{
+        const res = await client.query({
+            collection_name,
+            filter,
+            output_fields,
+            limit,
+        });
+
+        console.log("sentence2char res", res.data);
+        
+        const char_start_idx = res.data[0].char_start_idx;
+        const char_end_idx = res.data[0].char_end_idx;
+        return [char_start_idx, char_end_idx];
+    } catch (error) {
+        console.error(`コレクション "${collection_name}" でデータを取得できませんでした。`, error);
+        throw error;
+    }
+
+}

@@ -1,3 +1,4 @@
+// 発話履歴を表示するコンポーネント
 "use client"
 
 import { useEffect, useState } from 'react';

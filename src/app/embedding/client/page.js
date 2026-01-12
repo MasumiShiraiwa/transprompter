@@ -10,7 +10,7 @@ export default function EmbdTest() {
 
     useEffect(() => {
         if(!workerRef.current){
-            workerRef.current = new Worker(new URL('@/app/utils/embdding_worker.js', import.meta.url), {
+            workerRef.current = new Worker(new URL('@/app/utils/embedding_worker.js', import.meta.url), {
                 type: 'module',
             });
         }

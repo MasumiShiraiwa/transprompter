@@ -6,11 +6,8 @@ const collection_name = process.env.ZILLIZ_COLLECTION_NAME;
 
 // POST 複雑な検索パラメータでsentenceを検索する
 export async function POST(request, context) {
-    console.log("Search POST request received");
     const body = await request.json();
     const searchParams = body.data || body;
-    
-    console.log("Search parameters:", searchParams);
     
     try {
         const client = getMilvusClient();
