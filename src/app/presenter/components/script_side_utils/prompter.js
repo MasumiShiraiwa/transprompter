@@ -3,57 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { pusherClient } from '@/app/utils/pusher/client';
 
-export default function Prompter( {script, setScript, current_position} ) {
+export default function Prompter( {script, speaker_list, current_position, prompterMode} ) {
     const scrollRef = useRef(null);
-
-    // 初期化時
-    useEffect(() => {
-        // Pusherの編集イベントを受信する。
-        function pusherEditingEvent() { 
-            const channel = pusherClient
-                .subscribe("private-editing")
-                .bind("evt::editing", (data) => {
-                    if (data.text === "") { // 更新内容が行削除の場合
-                        setScript(prevScript => {
-                            const new_script = [...prevScript];
-                            new_script.splice(data.index, 1);
-                            return new_script;
-                        });
-                    }else{
-                        setScript(prevScript => {
-                            console.log("data.text", data.text);
-                            const new_script = [...prevScript];
-                            new_script[data.index] = data.text;
-                            return new_script;
-                        });
-                    }
-
-                });
-            console.log("channel", channel);
-            return () => {
-            channel.unbind();
-            };
-        }
-
-        // Pusherの行挿入イベントを受信する。
-        function pusherInsertingEvent() {
-            const channel = pusherClient
-                .subscribe("private-inserting")
-                .bind("evt::inserting", (data) => {
-                    setScript(prevScript => {
-                        const new_script = [...prevScript];
-                        new_script.splice(data.index, 0, data.text);
-                        return new_script;
-                    });
-                });
-            return () => {
-                channel.unbind();
-            };
-        }
-
-        pusherEditingEvent(); // Pusherの編集イベントを受信する。
-        pusherInsertingEvent(); // Pusherの行挿入イベントを受信する。
-    }, []);
+    // const [prompterMode, setPrompterMode] = useState(false);
 
     // 現在位置が変更されたときに自動スクロール
     // スムーズスクロールのスピードを独自調整するために scrollIntoView を使わずに animate scroll を利用
@@ -98,11 +50,11 @@ export default function Prompter( {script, setScript, current_position} ) {
         }
     }, [current_position]);
 
+
     return (
         <div className="bg-gray-50 p-4 rounded-lg h-full flex flex-col">
             <div className="flex justify-between items-center mb-4">
                 <div>
-                    <div>current_position: {current_position}</div>
                     <h2 className="text-xl font-semibold text-gray-700">台本パネル</h2>
                 </div>
             </div>
@@ -116,15 +68,31 @@ export default function Prompter( {script, setScript, current_position} ) {
                         台本が読み込まれていません
                     </div>
                 ) : (
-                    script.map((script, index) => (
+                    script.flat().map((line, index) => (
+                        console.log("line", line),
                         <p 
-                            key={index} 
+                            key={index}
                             className={`py-1 leading-relaxed transition-colors duration-200 font-bold whitespace-pre-line`}
                         >
-                            <span className="text-sm text-gray-500 mr-2">
-                                {index + 1}.
-                            </span>
-                            {script.replace(/\|/g, "\n")}
+                            {prompterMode ? (
+                                <>
+                                    <span className="text-sm text-gray-500 mr-2 inline-block" style={{ transform: 'scaleX(-1)' }}>
+                                        {index + 1}.
+                                    </span>
+                                    <span className="inline-block" style={{ transform: 'scaleX(-1)' }}>
+                                        {line.replace(/\|/g, "\n")}
+                                    </span>
+
+                                </>
+                            ) : (
+                                <>
+                                    <span className="text-sm text-gray-500 mr-2">
+                                        {index + 1}.
+                                    </span>
+                                    {/* {line.replace(/\|/g, "\n")} */}
+                                    {line.replace(/\|/g, "\n")}
+                                </>
+                            )}
                         </p>
                     ))
                 )}

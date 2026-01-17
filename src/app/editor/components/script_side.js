@@ -3,14 +3,52 @@
 import { useState, useEffect, useRef, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 
-export default function ScriptSide( {script, setScript, current_position, setCurrentPosition} ) {
+export default function ScriptSide( {script, setScript, speaker_list, setSpeakerList, current_position, setCurrentPosition, selectedSpeaker, setSelectedSpeaker, groupIndex, setGroupIndex, syncData} ) {
     const scrollRef = useRef(null);
     const router = useRouter();
     const [editIndex, setEditIndex] = useState(null);
 
-    const handleCueCardSave = async () => {
+    // キーボードイベントのハンドリング
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') {
+                setEditIndex(null);
+                setSelectedSpeaker(null);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [editIndex, selectedSpeaker]);
+
+    useEffect(() => { // 選択されたスピーカーが変更されたときに、speaker_listを更新する
+        async function updateSpeaker() {
+            if(editIndex !== null && selectedSpeaker !== null){
+                setSpeakerList(prevSpeakerList => {
+                    const newSpeakerList = [...prevSpeakerList];
+                    newSpeakerList[editIndex] = selectedSpeaker;
+                    return newSpeakerList;
+                });
+
+            const body = { globalIdx: editIndex, speaker: selectedSpeaker };
+            const res_update_speaker = await fetch('/api/pusher/update_speaker', {
+                method: 'POST',
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(body),
+            });
+            const data_update_speaker = await res_update_speaker.json();
+
+            }}
+        updateSpeaker();
+    },[selectedSpeaker])
+
+    // 保存ボタンを押したときの処理
+    const handleSave = async () => {
         // API呼び出し
-        const body = { scripts: script };
+        const body = { scripts: script, speaker_list: speaker_list };
         const res_cue_card_saved = await fetch('/api/cue_card/update', {
             method: 'POST',
             headers: {
@@ -20,60 +58,127 @@ export default function ScriptSide( {script, setScript, current_position, setCur
         });
         const data_cue_card_saved = await res_cue_card_saved.json();
         console.log("cue card saved: ", data_cue_card_saved);
+
+        // PusherでPresenter側を更新する
+        await syncData();
     };
 
-    const handleScriptChange = (index, value) => { // 表示更新用
+    // 台本を変更したときの処理(編集画面描画用)
+    const handleScriptChange = (groupIdx, localIdx, value) => {
         setScript(prevScript => {
             const newScript = [...prevScript];
-            newScript[index] = value;
+            newScript[groupIdx][localIdx] = value;
             return newScript;
         });
     };
 
-    const handleLineEnter = async (index, value) => { // Enterキーが押されたときの処理
-        console.log(`Enter pressed at line_index: ${index}, value: ${value}`);
+    // 台本を変更したときの処理(同期用)
+    const handleLineEnter = async (globalIdx, groupIdx, localIdx, value) => { // Enterキーが押されたときの処理
+        console.log(`Enter pressed at line_index: ${globalIdx}, text: ${value}, speaker: ${selectedSpeaker}`);
 
-        const body = { index: index, text: value };
-        const res_editted = await fetch('/api/pusher/editing', {
-            method: 'POST',
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(body),
-        });
-        const data_editted = await res_editted.json();
-        console.log("edditing event が送信されました:", data_editted);
-
-        if (value === "") {
-            setScript(prevScript => {
-                const newScript = [...prevScript];
-                newScript.splice(index, 1);
-                return newScript;
-            });
+        let newScript = [...script]
+        let newSpeakerList = [...speaker_list]
+        if (value === "") { // 行を削除する
+            if(newScript[groupIdx].length > 1){
+                newScript[groupIdx].splice(localIdx, 1);
+            }else{
+                newScript.splice(groupIdx, 1);
+            }
+            setScript(newScript);
+            newSpeakerList.splice(globalIdx, 1);
+            setSpeakerList(newSpeakerList);
+        }else{
+            newSpeakerList[globalIdx] = selectedSpeaker;
+            setSpeakerList(newSpeakerList);
         }
 
-    };
-
-    const handleInsertLine = async (index) => {
-        setScript(prevScript => {
-            const newScript = [...prevScript];
-            newScript.splice(index, 0, "");
-            return newScript;
-        });
-        const body = { index: index, text: "編集中..." };
-        const res_inserted = await fetch('/api/pusher/inserting', {
+        const body = { script: newScript, speaker_list: newSpeakerList };
+        console.log("body", body);
+        const res_update_script = await fetch('/api/pusher/update_script', {
             method: 'POST',
             headers: {
-              "Content-Type": "application/json",
+                "Content-Type": "application/json",
             },
             body: JSON.stringify(body),
         });
+        const data_update_script = await res_update_script.json();
+        console.log("update_script event が送信されました:", data_update_script);
+
+        setEditIndex(null);
     };
 
-    // 変える。ダブルクリックで必ず実行される。行選択→更新は右のボタンに移す
-    // 行を選択したときに現在位置を更新する(誤操作が起こりやすいかも。その場合は、行の右端にボタンを用意する？)
-    const handleSelectLine = (index) => {
-        setCurrentPosition(index);
+    // 行を挿入したときの処理
+    const handleInsertLine = async (globalIdx) => {
+        setEditIndex(globalIdx);
+
+        let newScript = [...script]
+        let newSpeakerList = [...speaker_list]
+
+        let currentIndex = 0;
+        for(let i = 0; i < newScript.length; i++){
+            let temp = [...newScript[i]];
+            console.log("currentIndex", currentIndex, "i", i);
+            if(currentIndex <= globalIdx && currentIndex + newScript[i].length > globalIdx){
+                temp.splice(globalIdx - currentIndex, 0, "");
+                console.log("newScript[i]", newScript[i], "length", newScript[i].length);
+                newScript[i] = temp;
+                break;
+            }
+            else if(currentIndex + newScript[i].length === globalIdx){
+                newScript.splice(i + 1, 0, [""]);
+                break;
+            }
+            currentIndex += newScript[i].length;
+        }
+        setScript(newScript);
+
+        newSpeakerList.splice(globalIdx, 0, "");
+        setSpeakerList(newSpeakerList);
+
+        const body = { script: newScript, speaker_list: newSpeakerList };
+        const res_update_script = await fetch('/api/pusher/update_script', {
+            method: 'POST',
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+        });
+        const data_update_script = await res_update_script.json();
+        console.log("update_script event が送信されました:", data_update_script);
+
+    };
+
+    // 行を選択したときの処理
+    // 【要変更】同じグループに属する行もggroupIdxに追加・削除する。
+    const handleSelectLine = (globalIdx, bool = true) => {
+        let activeGroup = null;
+        let activeGroupStartIdx = 0;
+        let idx = 0;
+        for (let group of script) {
+            if (idx <= globalIdx && idx + group.length > globalIdx) {
+                activeGroupStartIdx = idx;
+                activeGroup = Array.from(
+                    { length: group.length },
+                    (_, k) => activeGroupStartIdx + k
+                );
+                break;
+            }
+            idx += group.length;
+        }
+
+        if (groupIndex.includes(globalIdx) || !bool) {
+            setGroupIndex(prevGroupIndex => { // グループから削除
+                const newGroupIndex = [...prevGroupIndex];
+                activeGroup.forEach(idx => newGroupIndex.includes(idx) ? newGroupIndex.splice(newGroupIndex.indexOf(idx), 1) : null);
+                return newGroupIndex;
+            });
+        }else{
+            setGroupIndex(prevGroupIndex => { // グループに追加
+                const newGroupIndex = [...prevGroupIndex];
+                activeGroup.forEach(idx => newGroupIndex.includes(idx) ? null : newGroupIndex.push(idx));
+                return newGroupIndex;
+            });
+        }
     }
 
     // 現在位置が変更されたときに目印をつける
@@ -87,16 +192,11 @@ export default function ScriptSide( {script, setScript, current_position, setCur
             <div className="flex justify-between items-center mb-4">
                 <div>
                     <div>current_position: {current_position}</div>
+                    <div>groupIndex: {groupIndex.join(", ")}</div>
                     <h2 className="text-xl font-semibold text-gray-700">編集パネル</h2>
                 </div>
                 <button
-                    onClick={() => router.push('/upload')}
-                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors duration-200 text-sm font-medium"
-                >
-                    アップロード画面へ
-                </button>
-                <button
-                    onClick={() => handleCueCardSave()}
+                    onClick={() => handleSave()}
                     className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition-colors duration-200 text-sm font-medium"
                 >
                     変更を保存
@@ -112,65 +212,80 @@ export default function ScriptSide( {script, setScript, current_position, setCur
                         台本が読み込まれていません
                     </div>
                 ) : ( // scriptの長さが1以上の場合
-                    script.map((line, index) => (
-                        <Fragment key={index}>
-                            <div 
-                                className={`p-3 border border-gray-300 rounded-lg shadow-sm transition-colors duration-200 flex items-start ${
-                                    current_position === index ? 'bg-red-100' : 'bg-white'
-                                }`}
-                            >
-                                <span 
-                                    className="text-sm text-gray-500 mr-2 mt-1 shrink-0 select-none cursor-pointer hover:text-blue-500 transition-colors"
-                                    onClick={() => handleSelectLine(index)}
-                                >
-                                    {index + 1}.
-                                </span>
-                                {editIndex === index ? (
-                                    <textarea
-                                        value={line.replace(/\|/g, "\n")}
-                                        ref={el => {
-                                            if (el) {
-                                                el.style.height = 'auto';
-                                                el.style.height = el.scrollHeight + 'px';
-                                            }
-                                        }}
-                                        onChange={e => handleScriptChange(index, e.target.value)}
-                                        onBlur={() => setEditIndex(null)}
-                                        onKeyDown={e => {
-                                            if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
-                                                e.preventDefault();
-                                                handleLineEnter(index, line);
-                                            }
-                                        }}
-                                        autoFocus
-                                        className="w-full bg-transparent resize-none outline-none font-bold leading-relaxed overflow-hidden"
-                                        rows={1}
-                                        style={{ minHeight: '2rem' }}
-                                    />
-                                ) : (
-                                    <div
-                                        className="w-full font-bold leading-relaxed whitespace-pre-line cursor-pointer min-h-[1.5em]"
-                                        onDoubleClick={() => setEditIndex(index)}
-                                        tabIndex={0}
-                                        role="button"
+                    (() => {
+                        let globalIndex = 0;
+                        return script.map((lines, groupIdx) => (
+                            lines.map((line, localIdx) => {
+                                const index = globalIndex++;
+                                return (
+                                    <Fragment key={`${index}`}>
+                                    <div 
+                                        className={`p-3 border border-gray-300 rounded-lg transition-all duration-200 flex items-start ${
+                                            current_position === index ? 'bg-red-100' : 'bg-white'
+                                        } ${
+                                            groupIndex.includes(index) ? 'shadow-md ring-2 ring-gray-200 z-10 scale-[1.025]' : 'shadow-sm'
+                                        }`}
                                     >
-                                        {line === "" ? <span className="text-gray-400 font-normal">ダブルクリックして入力...</span> : line.replace(/\|/g, "\n")}
+                                        <span 
+                                            className="text-sm text-gray-500 mr-2 mt-1 shrink-0 select-none cursor-pointer hover:text-blue-500 transition-colors"
+                                            onClick={() => setCurrentPosition(index)}
+                                        >
+                                            {index + 1}.
+                                        </span>
+                                        <span className="mr-2 mt-1 font-bold text-gray-600 shrink-0">{speaker_list[index]}</span>
+                                        {editIndex === index ? (
+                                            <textarea
+                                                value={line.replace(/\|/g, "\n")}
+                                                ref={el => {
+                                                    if (el) {
+                                                        el.style.height = 'auto';
+                                                        el.style.height = el.scrollHeight + 'px';
+                                                    }
+                                                }}
+                                                onChange={e => handleScriptChange(groupIdx, localIdx, e.target.value)}
+                                                onBlur={() => {}}
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
+                                                        e.preventDefault();
+                                                        handleLineEnter(index, groupIdx, localIdx, line);
+                                                    }else if(e.key === 'Escape'){
+                                                        setEditIndex(null);
+                                                        setSelectedSpeaker(null);
+                                                    }
+                                                }}
+                                                autoFocus
+                                                className="w-full bg-transparent resize-none outline-none font-bold leading-relaxed overflow-hidden border-2 border-dotted border-blue-400 rounded px-1"
+                                                rows={1}
+                                                style={{ minHeight: '2rem' }}
+                                            />
+                                        ) : (
+                                            <div
+                                                className="w-full font-bold leading-relaxed whitespace-pre-line cursor-pointer min-h-[1.5em]"
+                                                onClick={() => handleSelectLine(index)}
+                                                onDoubleClick={() => {setEditIndex(index); setSelectedSpeaker(speaker_list[index]); handleSelectLine(index, false);}}
+                                                tabIndex={0}
+                                                role="button"
+                                            >
+                                                {line === "" ? <span className="text-gray-400 font-normal">ダブルクリックして入力...</span> : line.replace(/\|/g, "\n")}
+                                            </div>
+                                        )}
                                     </div>
-                                )}
-                            </div>
-                            {/* 行間の挿入エリア */}
-                            <div 
-                                className="h-4 flex items-center justify-center cursor-pointer group/divider"
-                                onClick={() => handleInsertLine(index + 1)}
-                            >
-                                <div className="w-full h-0.5 bg-blue-300 opacity-0 group-hover/divider:opacity-100 transition-opacity rounded-full relative">
-                                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover/divider:opacity-100 transition-opacity">
-                                        +
+                                    {/* 行間の挿入エリア */}
+                                    <div 
+                                        className="h-4 flex items-center justify-center cursor-pointer group/divider"
+                                        onClick={() => handleInsertLine(index + 1)}
+                                    >
+                                        <div className="w-full h-0.5 bg-blue-300 opacity-0 group-hover/divider:opacity-100 transition-opacity rounded-full relative">
+                                            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover/divider:opacity-100 transition-opacity">
+                                                +
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
-                        </Fragment>
-                    ))
+                                </Fragment>
+                            );
+                            })
+                        ));
+                    })()
                 )}
             </div>
         </div>

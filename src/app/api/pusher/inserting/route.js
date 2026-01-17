@@ -6,11 +6,11 @@ const pusherServer = getPusherInstance();
 export const dynamic = 'force-dynamic'; // defaults to auto
 
 export async function POST(req) {
-  const { index, text } = await req.json();
-  console.log("received inserting line event:", index, text);
+  const { globalIdx, text } = await req.json();
+  console.log("received inserting line event:", globalIdx, text);
   try {
     await pusherServer.trigger("private-inserting", "evt::inserting", {
-      index: index,
+      globalIdx: globalIdx,
       text: text,
     });
 

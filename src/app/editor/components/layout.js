@@ -1,19 +1,68 @@
 "use client"
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { pusherClient } from '@/app/utils/pusher/client';
 import ScriptSide from './script_side';
 import SpeechSide from './speech_side';
 import ControlSide from './control_side';
 
 
-export default function Layout( {scripts} ) {
+export default function Layout( {scripts, speakers, performers_list} ) {
     const [script, setScript] = useState(scripts);
+    const [speaker_list, setSpeakerList] = useState(speakers);
+    const [selectedSpeaker, setSelectedSpeaker] = useState(null); // 編集中、選択されたスピーカーを保持する
     const [scriptsObj, setScriptsObj] = useState({});
-    const [current_position, setCurrentPosition] = useState(0);
+    const [current_position, setCurrentPosition] = useState(0); // globalIdx
     const [isRecognizing, setIsRecognizing] = useState(false);
     const [cueCardMord, setCueCardMord] = useState(true); // True: カンペモード, False: ナレーションモード。切り替わるたびにPresenter側の表示を変える.
+    const [prompterMode, setPrompterMode] = useState(false);
+    const [groupIndex, setGroupIndex] = useState([]);
     const [sentence_idx_max, setSentenceIdxMax] = useState(scripts.length - 1);
     const [isPanelOpen, setIsPanelOpen] = useState(false);
+    // 最新のデータを保持するための Ref
+    const latestDataRef = useRef(null);
+
+    // Stateが更新されるたびに Ref の中身を最新にする
+    useEffect(() => {
+        latestDataRef.current = { 
+            script: script, 
+            speaker_list: speaker_list, 
+            position: current_position, 
+            cueCardMode: cueCardMord, 
+            prompterMode: prompterMode 
+        };
+    }, [script, speaker_list, current_position, cueCardMord, prompterMode]);
+
+    const syncData = async () => {
+        // Ref から最新の値を取得 (初回などで Ref が null の場合は state を使うフォールバックを入れています)
+        const body = latestDataRef.current || { script, speaker_list, position: current_position, cueCardMode: cueCardMord, prompterMode: prompterMode };
+        
+        console.log("sync data: ", body);
+        const res_sync = await fetch('/api/pusher/sync/acc', {
+            method: 'POST',
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+        });
+        const data_sync = await res_sync.json();
+        console.log("sync event が送信されました:", data_sync);
+    }
+
+    useEffect(()=>{
+        async function pusherSyncRequestEvent(){
+            const channel = pusherClient
+                .subscribe("private-sync-request")
+                .bind("evt::sync-request", async (data) => {
+                    console.log("sync request event が送信されました:", data);
+                    await syncData();
+                });
+            return () => {
+                channel.unbind();
+            };
+        }
+        pusherSyncRequestEvent();
+    },[]);
 
     // 【AIリアルタイム編集機能】
     // ここで、Scriptの重要度を設定する.
@@ -24,13 +73,13 @@ export default function Layout( {scripts} ) {
     // 編集のタイミングは、始まる前(Index = 0)，1/3，2/3，のタイミングで行う。
     // 書き換えにかかる時間に応じて、編集のタイミングを前倒しする。
 
-
     // scripts配列をオブジェクトに変換する {0: "...", 1: "...", ...}
     useEffect(() => {
-        setScriptsObj(() => {return script.reduce((acc, cur, idx) => {
-                acc[idx] = cur;
-                return acc;
-            }, {})});
+        const flatScript = script.flat();
+        setScriptsObj(() => {return flatScript.reduce((acc, cur, idx) => {
+            acc[idx] = cur;
+            return acc;
+        }, {})});
     }, [script]);
 
     useEffect(()=>{
@@ -56,13 +105,19 @@ export default function Layout( {scripts} ) {
 
     return (
         <div className="flex h-screen py-4 px-2 space-x-2">
+            {/* 台本編集パネル */}
             <div className="flex-[6] min-w-0">
-                <ScriptSide script={script} setScript={setScript} current_position={current_position} setCurrentPosition={setCurrentPosition} />
+                <ScriptSide script={script} setScript={setScript} speaker_list={speaker_list} setSpeakerList={setSpeakerList} 
+                current_position={current_position} setCurrentPosition={setCurrentPosition} selectedSpeaker={selectedSpeaker} setSelectedSpeaker={setSelectedSpeaker} 
+                groupIndex={groupIndex} setGroupIndex={setGroupIndex} syncData={syncData} />
             </div>
 
             {/* 操作パネル */}
             <div className="flex-[4] min-w-0">
-                <ControlSide cueCardMord={cueCardMord} setCueCardMord={setCueCardMord} isRecognizing={isRecognizing} setIsRecognizing={setIsRecognizing} current_position={current_position} setCurrentPosition={setCurrentPosition}/>
+                <ControlSide script={script} setScript={setScript} cueCardMord={cueCardMord} setCueCardMord={setCueCardMord} prompterMode={prompterMode} setPrompterMode={setPrompterMode} 
+                isRecognizing={isRecognizing} setIsRecognizing={setIsRecognizing} current_position={current_position} setCurrentPosition={setCurrentPosition} 
+                sentence_idx_max={sentence_idx_max} selectedSpeaker={selectedSpeaker} setSelectedSpeaker={setSelectedSpeaker} groupIndex={groupIndex} setGroupIndex={setGroupIndex} 
+                performers_list={performers_list} />
             </div>
 
 
