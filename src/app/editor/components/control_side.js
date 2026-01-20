@@ -3,22 +3,13 @@
 import { useState, useEffect } from 'react';
 import SpeakerList from './controll_side_utils/speaker_list';
 import Grouping from './controll_side_utils/grouping';
+import { YjsInstance } from '@/app/utils/yjs/client';
 
-export default function ControlSide({script, setScript, cueCardMord, setCueCardMord, prompterMode, setPrompterMode, isRecognizing, setIsRecognizing, current_position, setCurrentPosition, sentence_idx_max, selectedSpeaker, setSelectedSpeaker, groupIndex, setGroupIndex, performers_list}) {
+export default function ControlSide({script, setScript, cueCardMord, setCueCardMord, prompterMode, setPrompterMode, isRecognizing, setIsRecognizing, current_position, setCurrentPosition, sentence_idx_max, selectedSpeaker, setSelectedSpeaker, groupIndex, setGroupIndex, performers_list, yjsInstance}) {
 
     // 表示モード切替ボタンを押したときの処理
-    const switchDisplayMode= async () => {
-        // API呼び出し
-        const body = { mode: !cueCardMord };
-        const res_mode_switch = await fetch('/api/pusher/mode_switch', {
-            method: 'POST',
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(body),
-        });
-        const data_mode_switch = await res_mode_switch.json();
-        console.log("mode_switch event sent: ", data_mode_switch);
+    const switchDisplayMode= async () => {        
+        yjsInstance.setCueCardMode(!cueCardMord);
         setCueCardMord(!cueCardMord);
     } 
 
@@ -34,28 +25,27 @@ export default function ControlSide({script, setScript, cueCardMord, setCueCardM
 
     // 前の台本を表示するボタンを押したときの処理
     const handlePreviousButton = async () => {
-        setCurrentPosition(current_position - 1<0 ? 0 : current_position - 1);
+        const nextPos = Math.max(0, current_position - 1);
+        console.log("previous bottun", nextPos);
+        setCurrentPosition(nextPos);
     }
 
     // 次の台本を表示するボタンを押したときの処理
     const handleNextButton = async () => {
-        setCurrentPosition(current_position + 1>sentence_idx_max ? sentence_idx_max : current_position + 1);
+        // sentence_idx_maxが更新されていない可能性があるため、scriptから計算する
+        const flatLength = script ? script.reduce((acc, group) => acc + group.length, 0) : 0;
+        const maxIndex = Math.max(0, flatLength - 1);
+        
+        const nextPos = Math.min(maxIndex, current_position + 1);
+        console.log("next bottun", nextPos);
+        setCurrentPosition(nextPos);
     }
 
     // プロンプターモード切替ボタンを押したときの処理
     const switchPrompterMode = async () => {
         const newMode = !prompterMode;
+        yjsInstance.setPrompterMode(newMode);
         setPrompterMode(newMode);
-        
-        // Pusher API経由でプロンプターモードを切り替え
-        const body = { mode: newMode };
-        await fetch('/api/pusher/prompter_switch', {
-            method: 'POST',
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(body),
-        });
     }
 
     // キーボードイベントのハンドリング
@@ -164,7 +154,7 @@ export default function ControlSide({script, setScript, cueCardMord, setCueCardM
             <SpeakerList selectedSpeaker={selectedSpeaker} setSelectedSpeaker={setSelectedSpeaker} performers_list={performers_list} />
 
             {/* グループ設定・解除ボタン */}
-            <Grouping script={script} setScript={setScript} groupIndex={groupIndex} setGroupIndex={setGroupIndex} />
+            <Grouping script={script} setScript={setScript} groupIndex={groupIndex} setGroupIndex={setGroupIndex} yjsInstance={yjsInstance} />
 
 
             {/* 再生制御ボタン群 */}

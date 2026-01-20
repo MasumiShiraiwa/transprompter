@@ -20,9 +20,10 @@ export default function Editor() {
     const performers_list = performers.map(item => item.name);
 
 
+
     return (
         <div>
-            <Layout scripts={lines} speakers={speakers} performers_list={performers_list} />
+            <Layout scripts={[]} speakers={[]} performers_list={performers_list} />
         </div>
     )
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 
-export default function ScriptSide( {script, setScript, speaker_list, setSpeakerList, current_position, setCurrentPosition, selectedSpeaker, setSelectedSpeaker, groupIndex, setGroupIndex, syncData} ) {
+export default function ScriptSide( {script, setScript, speaker_list, setSpeakerList, current_position, setCurrentPosition, selectedSpeaker, setSelectedSpeaker, groupIndex, setGroupIndex, syncData, yjsInstance} ) {
     const scrollRef = useRef(null);
     const router = useRouter();
     const [editIndex, setEditIndex] = useState(null);
@@ -22,24 +22,16 @@ export default function ScriptSide( {script, setScript, speaker_list, setSpeaker
         };
     }, [editIndex, selectedSpeaker]);
 
-    useEffect(() => { // 選択されたスピーカーが変更されたときに、speaker_listを更新する
+    useEffect(() => { // 選択されたスピーカーが変更されたときに、speaker_listとYJSを更新する
         async function updateSpeaker() {
             if(editIndex !== null && selectedSpeaker !== null){
-                setSpeakerList(prevSpeakerList => {
+                setSpeakerList(prevSpeakerList => { // 必用？？
                     const newSpeakerList = [...prevSpeakerList];
                     newSpeakerList[editIndex] = selectedSpeaker;
                     return newSpeakerList;
                 });
-
-            const body = { globalIdx: editIndex, speaker: selectedSpeaker };
-            const res_update_speaker = await fetch('/api/pusher/update_speaker', {
-                method: 'POST',
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(body),
-            });
-            const data_update_speaker = await res_update_speaker.json();
+            
+                await yjsInstance.updateSpeaker(editIndex, selectedSpeaker);
 
             }}
         updateSpeaker();
@@ -47,7 +39,7 @@ export default function ScriptSide( {script, setScript, speaker_list, setSpeaker
 
     // 保存ボタンを押したときの処理
     const handleSave = async () => {
-        // API呼び出し
+        // DB保存するAPI呼び出し
         const body = { scripts: script, speaker_list: speaker_list };
         const res_cue_card_saved = await fetch('/api/cue_card/update', {
             method: 'POST',
@@ -60,7 +52,12 @@ export default function ScriptSide( {script, setScript, speaker_list, setSpeaker
         console.log("cue card saved: ", data_cue_card_saved);
 
         // PusherでPresenter側を更新する
-        await syncData();
+        const res_snapshot = await fetch('/api/yjs/snapshot', {
+            method: 'POST',
+        });
+        const data_snapshot = await res_snapshot.json();
+        console.log("snapshot: ", data_snapshot);
+
     };
 
     // 台本を変更したときの処理(編集画面描画用)
@@ -79,30 +76,23 @@ export default function ScriptSide( {script, setScript, speaker_list, setSpeaker
         let newScript = [...script]
         let newSpeakerList = [...speaker_list]
         if (value === "") { // 行を削除する
-            if(newScript[groupIdx].length > 1){
+            if(yjsInstance.getScript(groupIdx).length > 1){
                 newScript[groupIdx].splice(localIdx, 1);
             }else{
                 newScript.splice(groupIdx, 1);
-            }
-            setScript(newScript);
+                yjsInstance.deleteScript(groupIdx);
+        }
+            yjsInstance.deleteSpeaker(globalIdx);
             newSpeakerList.splice(globalIdx, 1);
+            setScript(newScript);
             setSpeakerList(newSpeakerList);
         }else{
+            yjsInstance.updateSpeaker(globalIdx, selectedSpeaker);
             newSpeakerList[globalIdx] = selectedSpeaker;
             setSpeakerList(newSpeakerList);
         }
-
-        const body = { script: newScript, speaker_list: newSpeakerList };
-        console.log("body", body);
-        const res_update_script = await fetch('/api/pusher/update_script', {
-            method: 'POST',
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(body),
-        });
-        const data_update_script = await res_update_script.json();
-        console.log("update_script event が送信されました:", data_update_script);
+        // 本来は変えるべき！
+        yjsInstance.updateScript(groupIdx, newScript[groupIdx]); 
 
         setEditIndex(null);
     };
@@ -117,15 +107,16 @@ export default function ScriptSide( {script, setScript, speaker_list, setSpeaker
         let currentIndex = 0;
         for(let i = 0; i < newScript.length; i++){
             let temp = [...newScript[i]];
-            console.log("currentIndex", currentIndex, "i", i);
             if(currentIndex <= globalIdx && currentIndex + newScript[i].length > globalIdx){
                 temp.splice(globalIdx - currentIndex, 0, "");
-                console.log("newScript[i]", newScript[i], "length", newScript[i].length);
                 newScript[i] = temp;
+                yjsInstance.updateScript(i, temp);
                 break;
             }
             else if(currentIndex + newScript[i].length === globalIdx){
+                yjsInstance.insertScript(i + 1, [""]);
                 newScript.splice(i + 1, 0, [""]);
+
                 break;
             }
             currentIndex += newScript[i].length;
@@ -133,19 +124,8 @@ export default function ScriptSide( {script, setScript, speaker_list, setSpeaker
         setScript(newScript);
 
         newSpeakerList.splice(globalIdx, 0, "");
+        yjsInstance.insertSpeaker(globalIdx, "");
         setSpeakerList(newSpeakerList);
-
-        const body = { script: newScript, speaker_list: newSpeakerList };
-        const res_update_script = await fetch('/api/pusher/update_script', {
-            method: 'POST',
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(body),
-        });
-        const data_update_script = await res_update_script.json();
-        console.log("update_script event が送信されました:", data_update_script);
-
     };
 
     // 行を選択したときの処理

@@ -1,5 +1,7 @@
 // サーバ側で利用するPusherの設定
-import PusherServer from "pusher";
+import PusherServer from "pusher"; //Pusher の HTTP Application Programming Interface を叩くための SDK
+// WebSocket 接続はしない
+// 「このイベントを配信して」と 命令する(pusher.trigger)側
 
 let pusherInstance = null;
 

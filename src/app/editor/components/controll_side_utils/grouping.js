@@ -1,6 +1,6 @@
 "use client"
 
-export default function Grouping({script, setScript, groupIndex, setGroupIndex}) {
+export default function Grouping({script, setScript, groupIndex, setGroupIndex, yjsInstance}) {
 
     // グループ設定ボタンを押したときの処理
     const handleGroupSettings = async () => {
@@ -15,9 +15,16 @@ export default function Grouping({script, setScript, groupIndex, setGroupIndex})
         let newScript = [];
         let currentIndex = 0;
         let tempTargetGroup = [];
+        let leftGroupIndex = 0;
+        let rightGroupIndex = 0;
 
-        script.forEach(group => {
+        script.forEach((group, i) => {
+
             if (currentIndex >= sortedGroupIndex[0] && currentIndex <= sortedGroupIndex[sortedGroupIndex.length - 1]){
+                if (tempTargetGroup.length === 0) {
+                    leftGroupIndex = i;
+                }
+                rightGroupIndex = i;
                 tempTargetGroup = tempTargetGroup.concat(group);
                 console.log("tempTargetGroup", tempTargetGroup);
                 currentIndex += group.length;
@@ -25,6 +32,7 @@ export default function Grouping({script, setScript, groupIndex, setGroupIndex})
             }else{
                 if(tempTargetGroup.length > 0){
                     newScript.push(tempTargetGroup);
+                    yjsInstance.mergeGroup(leftGroupIndex, rightGroupIndex, tempTargetGroup);
                     tempTargetGroup = [];
                 }
                 newScript.push(group);
@@ -32,19 +40,16 @@ export default function Grouping({script, setScript, groupIndex, setGroupIndex})
                 return;
             }
         });
+
+        if(tempTargetGroup.length > 0){
+            newScript.push(tempTargetGroup);
+            yjsInstance.mergeGroup(leftGroupIndex, rightGroupIndex, tempTargetGroup);
+            tempTargetGroup = [];
+        }
         console.log("newScript", newScript);
         setScript(newScript);
         setGroupIndex([]);
 
-        const body = { script: newScript, speaker_list: null };
-        const res_update_script = await fetch('/api/pusher/update_script', {
-            method: 'POST',
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(body),
-        });
-        const data_update_script = await res_update_script.json();
     }
 
     // グループ解除ボタンを押したときの処理
@@ -56,10 +61,11 @@ export default function Grouping({script, setScript, groupIndex, setGroupIndex})
         }
 
         let newScript = [];
+        
         let currentIndex = 0;
 
         // script全体を走査して新しいscriptを構築する
-        script.forEach(group => {
+        script.forEach((group, i) => {
             const groupLength = group.length;
             if(groupLength < 2){
                 newScript.push(group);
@@ -75,12 +81,16 @@ export default function Grouping({script, setScript, groupIndex, setGroupIndex})
             // すべてのインデックスが含まれているかチェックする
             const isTargetGroup = groupIndices.every(idx => sortedGroupIndex.includes(idx));
 
+            
+
             if (isTargetGroup) {
                 // グループを解除して個別の要素にする
                 // ["A", "B"] -> ["A"], ["B"]
                 group.forEach(text => {
                     newScript.push([text]);
                 });
+
+                yjsInstance.splitGroup(i);
             } else {
                 // そのまま維持
                 newScript.push(group);

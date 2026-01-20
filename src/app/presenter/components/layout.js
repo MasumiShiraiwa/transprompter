@@ -1,18 +1,79 @@
 "use client"
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Prompter from './script_side_utils/prompter';
 import CueCard from './script_side_utils/cue_card';
 import { pusherClient } from '@/app/utils/pusher/client';
+import { YjsInstance } from '@/app/utils/yjs/client';
 
 export default function Layout( {scripts, speakers, performers_list} ) {
     const [script, setScript] = useState(scripts);
     const [speaker_list, setSpeakerList] = useState(speakers);
     const [current_position, setCurrentPosition] = useState(0); // globalIdx
-    const [cueCardMord, setCueCardMord] = useState(true); // True: カンペモード, False: ナレーションモード。切り替わるたびにPresenter側の表示を変える.
+    const [cueCardMode, setCueCardMode] = useState(true); // True: カンペモード, False: ナレーションモード。切り替わるたびにPresenter側の表示を変える.
     const [prompterMode, setPrompterMode] = useState(false);
 
+    const yjsInstanceRef = useRef(null);
+
     useEffect(() => {
+        // YJSインスタンスを設定する。
+        async function yjsSetting(){
+            try{
+                if (!yjsInstanceRef.current) {
+                    yjsInstanceRef.current = new YjsInstance();
+                }
+                const yjsInstance = yjsInstanceRef.current;
+                await yjsInstance.sync(); // DBとの同期処理
+                if (yjsInstance.getCueCardMode() !== undefined) setCueCardMode(yjsInstance.getCueCardMode());
+                if (yjsInstance.getPrompterMode() !== undefined) setPrompterMode(yjsInstance.getPrompterMode());
+                if (yjsInstance.getCurrentPosition() !== undefined) setCurrentPosition(yjsInstance.getCurrentPosition());
+                if (yjsInstance.getScript() !== undefined) setScript(yjsInstance.getScript());
+                if (yjsInstance.getSpeaker() !== undefined) setSpeakerList(yjsInstance.getSpeaker());
+            }catch(e){
+                console.error("Failed to set yjs", e);
+            }
+        }
+
+        // yjsの更新イベントを受信する。
+        async function pusherYjsUpdateEvent(){
+            // シングルトン的に扱うためにrefで保持
+            if (!yjsInstanceRef.current) {
+                yjsInstanceRef.current = new YjsInstance();
+            }
+            const yjsInstance = yjsInstanceRef.current;
+            
+            const channel = pusherClient
+                .subscribe("private-yjs-update")
+                .bind("evt::yjs-update", async (data) => {
+                    console.log("yjs update", data.update);
+                    try {
+                        const update = data.update;
+                        const updateArray = update instanceof Object && !Array.isArray(update) ? Object.values(update) : update;
+                        const updateUint8 = new Uint8Array(updateArray);
+                        
+                        // remote update適用
+                        await yjsInstance.remoteUpdateHandler(updateUint8);
+                        
+                        // State更新
+                        if (yjsInstance.getPrompterMode() !== undefined) setPrompterMode(yjsInstance.getPrompterMode());
+                        if (yjsInstance.getCueCardMode() !== undefined) setCueCardMode(yjsInstance.getCueCardMode());
+                        if (yjsInstance.getCurrentPosition() !== undefined) setCurrentPosition(yjsInstance.getCurrentPosition());
+                        if (yjsInstance.getScript() !== undefined) setScript(yjsInstance.getScript());
+                        if (yjsInstance.getSpeaker() !== undefined) setSpeakerList(yjsInstance.getSpeaker()); // 要修正
+
+                    } catch (e) {
+                        console.error("Error applying update", e);
+                    }
+                });
+            return () => {
+                if (channel) channel.unbind();
+                if (yjsInstanceRef.current) {
+                    yjsInstanceRef.current.destroy();
+                    yjsInstanceRef.current = null;
+                }
+            };
+        }
+
         // 位置更新イベントを受信する。
         function pusherPositionUpdateEvent() { 
             const channel = pusherClient
@@ -33,7 +94,7 @@ export default function Layout( {scripts, speakers, performers_list} ) {
                     setScript(data.script);
                     data.speaker_list? setSpeakerList(data.speaker_list) : null;
                     setCurrentPosition(data.position);
-                    setCueCardMord(data.cueCardMode);
+                    setCueCardMode(data.cueCardMode);
                     setPrompterMode(data.prompterMode);
                 });
             return () => {
@@ -52,7 +113,7 @@ export default function Layout( {scripts, speakers, performers_list} ) {
             const channel = pusherClient
                 .subscribe("private-mode-switch")
                 .bind("evt::mode-switch", (data) => {
-                    setCueCardMord(data.mode);
+                    setCueCardMode(data.mode);
                 });
             return () => {
                 channel.unbind();
@@ -150,20 +211,20 @@ export default function Layout( {scripts, speakers, performers_list} ) {
         }
 
         // Pusherのスピーカー更新イベントを受信する。
-        function pusherUpdateSpeakerEvent() {
-            const channel = pusherClient
-                .subscribe("private-update-speaker")
-                .bind("evt::update-speaker", (data) => {
-                    setSpeakerList(prevSpeakerList => {
-                        const new_speakerList = [...prevSpeakerList];
-                        new_speakerList[data.globalIdx] = data.speaker;
-                        return new_speakerList;
-                    });
-                });
-            return () => {
-                channel.unbind();
-            };
-        }
+        // function pusherUpdateSpeakerEvent() {
+        //     const channel = pusherClient
+        //         .subscribe("private-update-speaker")
+        //         .bind("evt::update-speaker", (data) => {
+        //             setSpeakerList(prevSpeakerList => {
+        //                 const new_speakerList = [...prevSpeakerList];
+        //                 new_speakerList[data.globalIdx] = data.speaker;
+        //                 return new_speakerList;
+        //             });
+        //         });
+        //     return () => {
+        //         channel.unbind();
+        //     };
+        // }
 
         // 
         function pusherPrompterSwitchEvent() {
@@ -177,22 +238,25 @@ export default function Layout( {scripts, speakers, performers_list} ) {
             };
         };
 
+        yjsSetting();
+        pusherYjsUpdateEvent();
+
         pusherPositionUpdateEvent();
-        pusherSyncEvent();
-        pusherModeChangeEvent();
-        pusherUpdateScriptEvent();
-        pusherEditingEvent();
-        pusherInsertingEvent();
-        pusherUpdateSpeakerEvent();
+        // pusherSyncEvent();
+        // pusherModeChangeEvent();
+        // pusherUpdateScriptEvent();
+        // pusherEditingEvent();
+        // pusherInsertingEvent();
+        // pusherUpdateSpeakerEvent();
         pusherPrompterSwitchEvent();
-        pusherSyncRequestEvent(); // 最後に実行
+        // pusherSyncRequestEvent(); // 最後に実行
     }, []);
 
 
     return (
         <div className="flex h-screen py-4 px-2 space-x-2 relative overflow-hidden">
             <div className="flex-1 min-w-0 transition-all duration-300">
-            {cueCardMord ? (
+            {cueCardMode ? (
                     <div className="h-full flex flex-col">
                         <div>カンペモード</div>
                         <div className="flex-1 min-h-0">
