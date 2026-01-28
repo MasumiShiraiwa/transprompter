@@ -12,8 +12,36 @@ export default function Layout( {scripts, speakers, performers_list} ) {
     const [current_position, setCurrentPosition] = useState(0); // globalIdx
     const [cueCardMode, setCueCardMode] = useState(true); // True: カンペモード, False: ナレーションモード。切り替わるたびにPresenter側の表示を変える.
     const [prompterMode, setPrompterMode] = useState(false);
-
+    const [cueCard, setCueCard] = useState("");
+    const [showCueCard, setShowCueCard] = useState(false);
+    const [handwriteCueCard, setHandwriteCueCard] = useState("");
+    const [showHandwriteCueCard, setShowHandwriteCueCard] = useState(false);
     const yjsInstanceRef = useRef(null);
+
+    // cueCard更新時のエフェクト
+    useEffect(() => {
+        if (cueCard === "") return;
+        if (cueCard) {
+            setShowCueCard(true);
+            const timer = setTimeout(() => {
+                setShowCueCard(false);
+                setCueCard("");
+            }, 3000); // 3秒後に非表示
+            return () => clearTimeout(timer);
+        }
+    }, [cueCard]);
+
+    useEffect(() => {
+        if (handwriteCueCard === "") return;
+        if (handwriteCueCard) {
+            setShowHandwriteCueCard(true);
+            const timer = setTimeout(() => {
+                setShowHandwriteCueCard(false);
+                setHandwriteCueCard("");
+            }, 3000); // 3秒後に非表示
+            return () => clearTimeout(timer);
+        }
+    }, [handwriteCueCard]);
 
     useEffect(() => {
         // YJSインスタンスを設定する。
@@ -34,7 +62,7 @@ export default function Layout( {scripts, speakers, performers_list} ) {
             }
         }
 
-        // yjsの更新イベントを受信する。
+        // Pusherのyjsの更新イベントを受信する。
         async function pusherYjsUpdateEvent(){
             // シングルトン的に扱うためにrefで保持
             if (!yjsInstanceRef.current) {
@@ -45,7 +73,6 @@ export default function Layout( {scripts, speakers, performers_list} ) {
             const channel = pusherClient
                 .subscribe("private-yjs-update")
                 .bind("evt::yjs-update", async (data) => {
-                    console.log("yjs update", data.update);
                     try {
                         const update = data.update;
                         const updateArray = update instanceof Object && !Array.isArray(update) ? Object.values(update) : update;
@@ -74,7 +101,7 @@ export default function Layout( {scripts, speakers, performers_list} ) {
             };
         }
 
-        // 位置更新イベントを受信する。
+        // Pusherの位置更新イベントを受信する。
         function pusherPositionUpdateEvent() { 
             const channel = pusherClient
                 .subscribe("private-position-update")
@@ -108,7 +135,7 @@ export default function Layout( {scripts, speakers, performers_list} ) {
             const data_sync_request = await res_sync_request.json();
         }
 
-        // モード切り替えイベントを受信する。
+        // Pusherのモード切り替えイベントを受信する。
         function pusherModeChangeEvent() { 
             const channel = pusherClient
                 .subscribe("private-mode-switch")
@@ -155,13 +182,11 @@ export default function Layout( {scripts, speakers, performers_list} ) {
                         });
                     }else{
                         setScript(prevScript => {
-                            console.log("data.text", data.text);
                             const new_script = [...prevScript];
                             new_script[data.groupIdx][data.localIdx] = data.text;
                             return new_script;
                         });
                         setSpeakerList(prevSpeakerList => {
-                            console.log("data.speaker", data.speaker);
                             const new_speakerList = [...prevSpeakerList];
                             new_speakerList[data.globalIdx] = data.speaker;
                             return new_speakerList;
@@ -169,7 +194,6 @@ export default function Layout( {scripts, speakers, performers_list} ) {
                     }
 
                 });
-            console.log("channel", channel);
             return () => {
             channel.unbind();
             };
@@ -211,22 +235,22 @@ export default function Layout( {scripts, speakers, performers_list} ) {
         }
 
         // Pusherのスピーカー更新イベントを受信する。
-        // function pusherUpdateSpeakerEvent() {
-        //     const channel = pusherClient
-        //         .subscribe("private-update-speaker")
-        //         .bind("evt::update-speaker", (data) => {
-        //             setSpeakerList(prevSpeakerList => {
-        //                 const new_speakerList = [...prevSpeakerList];
-        //                 new_speakerList[data.globalIdx] = data.speaker;
-        //                 return new_speakerList;
-        //             });
-        //         });
-        //     return () => {
-        //         channel.unbind();
-        //     };
-        // }
+        function pusherUpdateSpeakerEvent() {
+            const channel = pusherClient
+                .subscribe("private-update-speaker")
+                .bind("evt::update-speaker", (data) => {
+                    setSpeakerList(prevSpeakerList => {
+                        const new_speakerList = [...prevSpeakerList];
+                        new_speakerList[data.globalIdx] = data.speaker;
+                        return new_speakerList;
+                    });
+                });
+            return () => {
+                channel.unbind();
+            };
+        }
 
-        // 
+        // プロンプターモード切り替えイベントを受信する。
         function pusherPrompterSwitchEvent() {
             const channel = pusherClient
                 .subscribe("private-prompter-switch")
@@ -238,19 +262,48 @@ export default function Layout( {scripts, speakers, performers_list} ) {
             };
         };
 
+        // Pusherの定型カンペ送信イベントを受信する。
+        function pusherCueCardTemplateEvent() {
+            const channel = pusherClient
+                .subscribe("private-cue-card-template")
+                .bind("evt::cue-card-template", (data) => {
+                    setCueCard(data.content);
+                });
+            return () => {
+                channel.unbind();
+            };
+        }
+
+        function pusherHandwriteCueCardEvent() {
+            const channel = pusherClient
+                .subscribe("private-handwrite-cue-card")
+                .bind("evt::handwrite-cue-card", (data) => {
+                    setHandwriteCueCard(data.cueCard);
+                });
+            return () => {
+                channel.unbind();
+            };
+        }
+
+
         yjsSetting();
         pusherYjsUpdateEvent();
 
-        pusherPositionUpdateEvent();
+        pusherCueCardTemplateEvent();
+        pusherHandwriteCueCardEvent();
+
+        // pusherPositionUpdateEvent();
         // pusherSyncEvent();
         // pusherModeChangeEvent();
         // pusherUpdateScriptEvent();
         // pusherEditingEvent();
         // pusherInsertingEvent();
         // pusherUpdateSpeakerEvent();
-        pusherPrompterSwitchEvent();
+        // pusherPrompterSwitchEvent();
         // pusherSyncRequestEvent(); // 最後に実行
     }, []);
+
+    
 
 
     return (
@@ -273,6 +326,34 @@ export default function Layout( {scripts, speakers, performers_list} ) {
                 )}
             </div>
             
+            {/* 定型カンペのオーバーレイ表示 */}
+            {showCueCard && (
+                <div className="absolute bottom-12 right-12 z-50 pointer-events-none">
+                    <div className="bg-gray-500/30 p-4 rounded-2xl shadow-2xl backdrop-blur-sm  max-w-2xl w-[25vw] h-[30vh] mx-4 animate-in fade-in zoom-in duration-300">
+                        <div 
+                            className="bg-white p-2 rounded-lg w-full h-full flex items-center justify-center" // flex等を追加して中央寄せ
+                            style={{ containerType: 'size' }} // ★ここが重要：コンテナクエリを有効化
+                        >
+                            <p 
+                                className="text-black font-bold text-center leading-relaxed whitespace-pre-wrap break-words drop-shadow-md w-full"
+                                style={{
+                                    fontSize: `${Math.min(30, 30 / Math.sqrt(Math.max(1, cueCard.length)))}cqw`
+                                }}// ★ここが重要：コンテナ幅の15%のサイズにする
+                            >
+                                {cueCard}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* 手書きカンペのオーバーレイ表示 */}
+            {showHandwriteCueCard && (
+                <div className="absolute bottom-12 right-12 z-50 pointer-events-none">
+                    <div className="bg-gray-500/30 p-4 rounded-2xl shadow-2xl backdrop-blur-sm w-[25vw] h-[30vh] animate-in fade-in zoom-in duration-300">
+                        <img src={handwriteCueCard} alt="Handwrite Cue Card" className="w-full h-full object-contain" />
+                    </div>
+                </div>
+            )}
         </div>
     )
 

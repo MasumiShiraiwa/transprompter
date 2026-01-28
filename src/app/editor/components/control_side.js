@@ -16,7 +16,7 @@ export default function ControlSide({script, setScript, cueCardMord, setCueCardM
     // 音声認識ボタンを押したときの処理
     const handleRecognitionButton = async () => {
         if (!cueCardMord) { // ナレーションモードの場合は、音声認識を開始する。
-            // setIsRecognizing(!isRecognizing);
+            setIsRecognizing(!isRecognizing);
         }else{
             setIsRecognizing(false);
             alert("カンペモードの場合は、音声認識を開始できません。");
@@ -151,7 +151,7 @@ export default function ControlSide({script, setScript, cueCardMord, setCueCardM
             </button>
 
             {/* スピーカーリスト */}
-            <SpeakerList selectedSpeaker={selectedSpeaker} setSelectedSpeaker={setSelectedSpeaker} performers_list={performers_list} />
+            <SpeakerList selectedSpeaker={selectedSpeaker} setSelectedSpeaker={setSelectedSpeaker} props_performers_list={performers_list} />
 
             {/* グループ設定・解除ボタン */}
             <Grouping script={script} setScript={setScript} groupIndex={groupIndex} setGroupIndex={setGroupIndex} yjsInstance={yjsInstance} />

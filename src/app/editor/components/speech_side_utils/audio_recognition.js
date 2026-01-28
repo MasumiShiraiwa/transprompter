@@ -94,13 +94,13 @@ export default function AudioRecognition( {setSpeech, isRecognizing, setIsRecogn
                     console.log("CANCELED: Did you set the speech resource key and region values?");
                 }
             
-                recognizer.stopContinuousRecognitionAsync();
+                setIsRecognizing(false);
             };
             
             // 4. キャンセルされた認識結果を含むイベントのシグナル
             recognizer.sessionStopped = (s, e) => {
                 console.log("\n    Session stopped event.");
-                recognizer.stopContinuousRecognitionAsync();
+                setIsRecognizing(false);
             };
     
             return recognizer;

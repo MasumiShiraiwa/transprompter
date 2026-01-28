@@ -25,7 +25,7 @@ export class YjsInstance {
         this.Y.applyUpdate(this.ydoc, updateUint8, "remote");
     }
 
-    // ローカル更新時の処理
+    // ローカル更新時の処理(Websocketでローカルの更新を送信する)
     async localUpdateHandler() {
         if(!this.ydoc || !this.Y) return;
         this.ydoc.on("update", async (update, origin) => {
@@ -84,9 +84,15 @@ export class YjsInstance {
 
     async insertSpeaker(index, speaker) {
         console.assert(typeof index === 'number', "index must be a number");
-        this.ySpeakerArray.delete(index, 1);
+        // this.ySpeakerArray.delete(index, 1);
         this.ySpeakerArray.insert(index, [speaker]);
     }
+
+    async emptySpeaker(index) {
+        this.ySpeakerArray.delete(index, 1);
+        this.ySpeakerArray.insert(index, [""]);
+    }
+
     async deleteSpeaker(index) {
         this.ySpeakerArray.delete(index);
     }
@@ -98,11 +104,9 @@ export class YjsInstance {
 
     // モードを更新する
     async setCueCardMode(mode) {
-        console.log("setCueCardMode", mode);
         this.yModeMap.set('cue_card_mode', mode);
     }
     async setPrompterMode(mode) {
-        console.log("setPrompterMode", mode);
         this.yModeMap.set('prompter_mode', mode);
     }
 

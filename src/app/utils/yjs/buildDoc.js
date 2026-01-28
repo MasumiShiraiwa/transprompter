@@ -1,6 +1,7 @@
 import * as Y from "yjs";
 import fs from 'fs/promises';
 import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 
 export async function buildDoc() {
     const ydoc = new Y.Doc();
@@ -9,7 +10,6 @@ export async function buildDoc() {
     const logContent = await fs.readFile(logPath, 'utf8');
 
     const lines = logContent.split('\n').filter(line => line.trim() !== '');
-    console.log("lines", lines);
     if (lines.length > 0) {
         for (const line of lines) {
             if (!line.trim()) continue;
@@ -19,7 +19,7 @@ export async function buildDoc() {
             const updateUint8 = new Uint8Array(updateArray);
             Y.applyUpdate(ydoc, updateUint8);
         }
-    } else {
+    } else { // 初期化時の場合（ログがない場合）
         console.log("No log content found, initializing with default values");
         const yMap = ydoc.getMap();
         // Script Arrayの初期化
@@ -31,14 +31,13 @@ export async function buildDoc() {
         const num_groups = data.reduce((max, item) => Math.max(max, item.group), 0);
         let lines = Array.from({ length: num_groups + 1 }, () => []);
         for (let i = 0; i < data.length; i++) {
-            lines[data[i].group].push(data[i].text);
+            lines[data[i].group].push({id: uuidv4(), text: data[i].text});
+            // lines[data[i].group].push(data[i].text);
             ySpeakerArray.insert(i, [data[i].speaker]);
         }
         for (let i = 0; i < lines.length; i++) {
             yScriptArray.insert(i, [[...lines[i]]]);
         }
-
-
 
         // 初期状態をログに保存
         const stateUpdate = Y.encodeStateAsUpdate(ydoc);

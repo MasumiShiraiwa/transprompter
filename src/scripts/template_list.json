@@ -1,0 +1,22 @@
+[
+    {
+        "id": 1,
+        "name": "template1",
+        "content": "残り10秒"
+    },
+    {
+        "id": 2,
+        "name": "template2",
+        "content": "CMへ"
+    },
+    {
+        "id": 3,
+        "name": "template3",
+        "content": "巻きで！"
+    },
+    {
+        "id": 4,
+        "name": "template4",
+        "content": "コンテンツのタイトルをここで表示"
+    }
+]

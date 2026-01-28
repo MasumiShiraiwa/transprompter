@@ -1,18 +1,21 @@
 "use client"
 
-import { useState, useEffect, useRef, Fragment } from 'react';
+import { useState, useEffect, useRef, useId, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
+import { v4 as uuidv4 } from 'uuid';
 
 export default function ScriptSide( {script, setScript, speaker_list, setSpeakerList, current_position, setCurrentPosition, selectedSpeaker, setSelectedSpeaker, groupIndex, setGroupIndex, syncData, yjsInstance} ) {
     const scrollRef = useRef(null);
     const router = useRouter();
     const [editIndex, setEditIndex] = useState(null);
+    // const id = useId(); // これを使うと、ブラウザのデベロッパーツールで、idが変わるため、デバッグが困難になる。
 
     // キーボードイベントのハンドリング
     useEffect(() => {
         const handleKeyDown = (event) => {
             if (event.key === 'Escape') {
                 setEditIndex(null);
+                setGroupIndex([]);
                 setSelectedSpeaker(null);
             }
         };
@@ -57,7 +60,6 @@ export default function ScriptSide( {script, setScript, speaker_list, setSpeaker
         });
         const data_snapshot = await res_snapshot.json();
         console.log("snapshot: ", data_snapshot);
-
     };
 
     // 台本を変更したときの処理(編集画面描画用)
@@ -71,8 +73,6 @@ export default function ScriptSide( {script, setScript, speaker_list, setSpeaker
 
     // 台本を変更したときの処理(同期用)
     const handleLineEnter = async (globalIdx, groupIdx, localIdx, value) => { // Enterキーが押されたときの処理
-        console.log(`Enter pressed at line_index: ${globalIdx}, text: ${value}, speaker: ${selectedSpeaker}`);
-
         let newScript = [...script]
         let newSpeakerList = [...speaker_list]
         if (value === "") { // 行を削除する
@@ -130,7 +130,7 @@ export default function ScriptSide( {script, setScript, speaker_list, setSpeaker
 
     // 行を選択したときの処理
     // 【要変更】同じグループに属する行もggroupIdxに追加・削除する。
-    const handleSelectLine = (globalIdx, bool = true) => {
+    const handleSelectLine = (globalIdx, editing = false) => {
         let activeGroup = null;
         let activeGroupStartIdx = 0;
         let idx = 0;
@@ -146,7 +146,7 @@ export default function ScriptSide( {script, setScript, speaker_list, setSpeaker
             idx += group.length;
         }
 
-        if (groupIndex.includes(globalIdx) || !bool) {
+        if (groupIndex.includes(globalIdx) && !editing) {
             setGroupIndex(prevGroupIndex => { // グループから削除
                 const newGroupIndex = [...prevGroupIndex];
                 activeGroup.forEach(idx => newGroupIndex.includes(idx) ? newGroupIndex.splice(newGroupIndex.indexOf(idx), 1) : null);
@@ -154,7 +154,9 @@ export default function ScriptSide( {script, setScript, speaker_list, setSpeaker
             });
         }else{
             setGroupIndex(prevGroupIndex => { // グループに追加
-                const newGroupIndex = [...prevGroupIndex];
+                // const newGroupIndex = [...prevGroupIndex];
+                const newGroupIndex = editing ? [] : [...prevGroupIndex];
+
                 activeGroup.forEach(idx => newGroupIndex.includes(idx) ? null : newGroupIndex.push(idx));
                 return newGroupIndex;
             });
@@ -242,7 +244,7 @@ export default function ScriptSide( {script, setScript, speaker_list, setSpeaker
                                             <div
                                                 className="w-full font-bold leading-relaxed whitespace-pre-line cursor-pointer min-h-[1.5em]"
                                                 onClick={() => handleSelectLine(index)}
-                                                onDoubleClick={() => {setEditIndex(index); setSelectedSpeaker(speaker_list[index]); handleSelectLine(index, false);}}
+                                                onDoubleClick={() => {setEditIndex(index); setSelectedSpeaker(speaker_list[index]); handleSelectLine(index, true);}}
                                                 tabIndex={0}
                                                 role="button"
                                             >

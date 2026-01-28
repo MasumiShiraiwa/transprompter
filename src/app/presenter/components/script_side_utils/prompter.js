@@ -60,7 +60,7 @@ export default function Prompter( {script, speaker_list, current_position, promp
             </div>
             <div 
                 ref={scrollRef}
-                className="bg-white border-2 border-gray-200 rounded-lg flex-1 overflow-y-auto p-4 space-y-1"
+                className="bg-white border-2 border-gray-200 rounded-lg flex-1 overflow-y-auto p-4 px-32 space-y-1"
                 style={{ maxHeight: '85vh' }}
             >
                 {script.length === 0 ? (
@@ -72,24 +72,26 @@ export default function Prompter( {script, speaker_list, current_position, promp
                         console.log("line", line),
                         <p 
                             key={index}
-                            className={`py-1 leading-relaxed transition-colors duration-200 font-bold whitespace-pre-line`}
+                            className={`py-2 leading-relaxed transition-colors duration-200 font-bold whitespace-pre-line text-2xl text-center`}
                         >
                             {prompterMode ? (
                                 <>
-                                    <span className="text-sm text-gray-500 mr-2 inline-block" style={{ transform: 'scaleX(-1)' }}>
+                                    {/* <span className="text-3xl text-gray-500 mr-4 inline-block" style={{ transform: 'scaleX(-1)' }}>
                                         {index + 1}.
-                                    </span>
+                                    </span> */}
                                     <span className="inline-block" style={{ transform: 'scaleX(-1)' }}>
+                                        <span className="text-xl text-gray-500 mr-4">
+                                            {speaker_list[index]}
+                                        </span>
                                         {line.replace(/\|/g, "\n")}
                                     </span>
 
                                 </>
                             ) : (
                                 <>
-                                    <span className="text-sm text-gray-500 mr-2">
-                                        {index + 1}.
+                                    <span className="text-xl text-gray-500 mr-4">
+                                        {speaker_list[index]}
                                     </span>
-                                    {/* {line.replace(/\|/g, "\n")} */}
                                     {line.replace(/\|/g, "\n")}
                                 </>
                             )}

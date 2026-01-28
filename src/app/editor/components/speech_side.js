@@ -7,12 +7,11 @@ import Content from './speech_side_utils/content';
 import AudioRecognition from './speech_side_utils/audio_recognition';
 import { predictPositionByVector, predictPositionByLLM } from '@/app/utils/predict_sentence_position';
 
-export default function SpeechSide( {script, isRecognizing, setIsRecognizing, current_position, setCurrentPosition, sentence_idx_max} ) {
+export default function SpeechSide( {script, speechHistory, setSpeechHistory, isRecognizing, setIsRecognizing, current_position, setCurrentPosition, sentence_idx_max} ) {
     const [speech, setSpeech] = useState({text: null, isSentenceCompleted: false});
     const [score_list, setScoreList] = useState({}); // 削除予定{char_idx1: {score:, sentence_idx:}, char_idx2: {score:, sentence_idx:}, ...}
     const [weigh_list, setWeighList] = useState({}); // 削除予定{char_idx1: {score:}, char_idx2: {score:}, ...}
     const [raw_score_list, setRawScoreList] = useState({}); // 削除予定{char_idx1: {score:, sentence_idx:}, char_idx2: {score:, sentence_idx:}, ...}
-    const [speech_history, setSpeechHistory] = useState([]);
     const useLLM = true; // LLMの使用をONにするかを決める変数
 
 
@@ -78,10 +77,12 @@ export default function SpeechSide( {script, isRecognizing, setIsRecognizing, cu
             setCurrentPosition(sentence_idx);
         }
 
+        // useEffect内でデータ取得するのは良くない？？ 
+        // そこでデータ取得をするならReact QueryやSWRなどを利用しましょう。
         async function fetchPositionByLLM() {
             if(speech.text === null)return;
             let start_time = performance.now(); // debug
-            const result = await predictPositionByLLM(speech, speech_history.join('。'), current_position, script);
+            const result = await predictPositionByLLM(speech, speechHistory.join('。'), current_position, script);
             console.log("predict time[ms]", performance.now() - start_time, speech); // debug
             const new_speech = result.new_speech;
             if (new_speech !== "") {
@@ -102,7 +103,7 @@ export default function SpeechSide( {script, isRecognizing, setIsRecognizing, cu
 
     // 初期化時に、score_list全体を更新する。
     useEffect(() => {
-        async function fetchGetAllData() {            
+        async function fetchGetAllData() {
             // 全体のデータを取得する。
             const res_get_all = await fetch(`/api/zilliz_cloud/get_all`);
             if(res_get_all.status !== 200){

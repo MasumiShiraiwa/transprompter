@@ -4,22 +4,25 @@ import { useState, useEffect, useRef } from 'react';
 import { pusherClient } from '@/app/utils/pusher/client';
 import { YjsInstance } from '@/app/utils/yjs/client';
 import ScriptSide from './script_side';
-import SpeechSide from './speech_side';
 import ControlSide from './control_side';
-
+import SpeechSide from './speech_side';
+import TemplateSide from './template_side/template_list';
+import Canvas from './template_side/canvas';
 
 export default function Layout( {scripts, speakers, performers_list} ) {
     const [script, setScript] = useState(scripts);
     const [speaker_list, setSpeakerList] = useState(speakers);
     const [selectedSpeaker, setSelectedSpeaker] = useState(null); // 編集中、選択されたスピーカーを保持する
     const [scriptsObj, setScriptsObj] = useState({});
+    const [speechHistory, setSpeechHistory] = useState([]);
     const [current_position, setCurrentPosition] = useState(0); // globalIdx
     const [isRecognizing, setIsRecognizing] = useState(false);
     const [cueCardMode, setCueCardMode] = useState(true); // True: カンペモード, False: ナレーションモード。切り替わるたびにPresenter側の表示を変える.
     const [prompterMode, setPrompterMode] = useState(false);
-    const [groupIndex, setGroupIndex] = useState([]);
+    const [groupIndex, setGroupIndex] = useState([]); // 選択中・編集中のグループを保持する
     const [sentence_idx_max, setSentenceIdxMax] = useState(scripts.length - 1);
-    const [isPanelOpen, setIsPanelOpen] = useState(false);
+    const [activePanel, setActivePanel] = useState(null); // 'speech', 'cue_list', or null
+    const [isHandwriteModalOpen, setIsHandwriteModalOpen] = useState(false); // モーダル表示用State
     // 最新のデータを保持するための Ref
     const latestDataRef = useRef(null); // 削除予定
     const yjsInstanceRef = useRef(null);
@@ -60,13 +63,6 @@ export default function Layout( {scripts, speakers, performers_list} ) {
 
     useEffect( ()=>{
         async function pusherSyncRequestEvent(){
-            // const channel = pusherClient
-            //     .subscribe("private-sync-request")
-            //     .bind("evt::sync-request", async (data) => {
-            //         console.log("sync request event が送信されました:", data);
-            //         await syncData();
-            //     });
-
             // シングルトン的に扱うためにrefで保持
             if (!yjsInstanceRef.current) {
                 yjsInstanceRef.current = new YjsInstance();
@@ -76,7 +72,6 @@ export default function Layout( {scripts, speakers, performers_list} ) {
             const channel = pusherClient
                 .subscribe("private-yjs-update")
                 .bind("evt::yjs-update", async (data) => {
-                    console.log("yjs update", data.update);
                     try {
                         const update = data.update;
                         const updateArray = update instanceof Object && !Array.isArray(update) ? Object.values(update) : update;
@@ -154,10 +149,19 @@ export default function Layout( {scripts, speakers, performers_list} ) {
 
     useEffect(()=>{ // 位置更新イベントを送信する。
         async function updatePosition() { 
-            console.log("update position", current_position);
-            yjsInstanceRef.current.setCurrentPosition(current_position);
+            if (yjsInstanceRef.current.getCurrentPosition() !== current_position) {
+                yjsInstanceRef.current.setCurrentPosition(current_position);
+            }
+        }
+        async function updateSpeechHistory() {
+            if (speechHistory.includes(scriptsObj[current_position])) {
+                return;
+            }else{
+                setSpeechHistory(prev => [...prev, scriptsObj[current_position]]);
+            }
         }
         updatePosition();
+        updateSpeechHistory();
     }, [current_position])
 
     return (
@@ -178,36 +182,47 @@ export default function Layout( {scripts, speakers, performers_list} ) {
             </div>
 
 
-            {/* スライドインパネルボタン */}
-            <button 
-                onClick={() => setIsPanelOpen(!isPanelOpen)}
-                className={`fixed top-1/2 transform -translate-y-1/2 flex items-center justify-center w-6 h-12 bg-white text-gray-400 hover:text-blue-600 hover:w-8 border-y border-l border-gray-200 rounded-l-md shadow-md z-50 transition-all duration-300 ${
-                    isPanelOpen ? 'right-96' : 'right-0'
-                }`}
-                aria-label="Toggle Panel"
-            >
-                {isPanelOpen ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            {/* スライドインパネルボタン群 */}
+            <div className={`fixed top-1/2 transform -translate-y-1/2 flex flex-col items-end z-50 transition-all duration-300 space-y-2 ${activePanel ? 'right-96' : 'right-0'}`}>
+                
+                {/* 音声認識パネルボタン */}
+                <button 
+                    onClick={() => setActivePanel(activePanel === 'speech' ? null : 'speech')}
+                    className={`flex items-center justify-center w-12 h-12 bg-white text-gray-400 hover:text-blue-600 border border-gray-200 rounded-l-md shadow-md transition-colors ${activePanel === 'speech' ? 'text-blue-600 bg-blue-50' : ''}`}
+                    aria-label="Toggle Speech Panel"
+                    title="音声認識"
+                >
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                     </svg>
-                ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </button>
+
+                {/* 定型カンペリストパネルボタン */}
+                <button 
+                    onClick={() => setActivePanel(activePanel === 'cue_list' ? null : 'cue_list')}
+                    className={`flex items-center justify-center w-12 h-12 bg-white text-gray-400 hover:text-blue-600 border border-gray-200 rounded-l-md shadow-md transition-colors ${activePanel === 'cue_list' ? 'text-blue-600 bg-blue-50' : ''}`}
+                    aria-label="Toggle Cue List Panel"
+                    title="定型カンペリスト"
+                >
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                )}
-            </button>
+                </button>
+            </div>
 
             {/* スライドインパネル */}
             <div 
                 className={`fixed top-0 right-0 h-full w-96 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out z-40 ${
-                    isPanelOpen ? 'translate-x-0' : 'translate-x-full'
+                    activePanel ? 'translate-x-0' : 'translate-x-full'
                 }`}
             >
                 <div className="h-full flex flex-col p-4 bg-gray-50 border-l border-gray-200">
                      <div className="flex justify-between items-center mb-4">
-                        <h2 className="font-bold text-lg text-gray-700">自動音声認識</h2>
+                        <h2 className="font-bold text-lg text-gray-700">
+                            {activePanel === 'speech' ? '自動音声認識' : '定型カンペリスト'}
+                        </h2>
                         <button 
-                            onClick={() => setIsPanelOpen(false)}
+                            onClick={() => setActivePanel(null)}
                             className="text-gray-500 hover:text-gray-700"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -216,10 +231,38 @@ export default function Layout( {scripts, speakers, performers_list} ) {
                         </button>
                     </div>
                     <div className="flex-1 min-h-0 overflow-y-auto">
-                        <SpeechSide script={scriptsObj} isRecognizing={isRecognizing} setIsRecognizing={setIsRecognizing} current_position={current_position} setCurrentPosition={setCurrentPosition} sentence_idx_max={sentence_idx_max} />
+                        {activePanel === 'speech' && (
+                            <SpeechSide script={scriptsObj} speechHistory={speechHistory} setSpeechHistory={setSpeechHistory} isRecognizing={isRecognizing} setIsRecognizing={setIsRecognizing} current_position={current_position} setCurrentPosition={setCurrentPosition} sentence_idx_max={sentence_idx_max} />
+                        )}
+                        {activePanel === 'cue_list' && (
+                            <TemplateSide onOpenHandwrite={() => setIsHandwriteModalOpen(true)} />
+                        )}
                     </div>
                 </div>
             </div>
+
+            {/* 手書き入力モーダル */}
+            {isHandwriteModalOpen && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white p-6 rounded-xl shadow-2xl w-[90vw] h-[80vh] relative flex flex-col">
+                        {/* 閉じるボタン */}
+                        <button 
+                            onClick={() => setIsHandwriteModalOpen(false)}
+                            className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-full text-gray-500"
+                        >
+                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                        
+                        <h2 className="text-xl font-bold mb-4 text-gray-700">手書きカンペ入力</h2>
+                        
+                        <div className="p-4 h-full w-full">
+                            <Canvas />
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
