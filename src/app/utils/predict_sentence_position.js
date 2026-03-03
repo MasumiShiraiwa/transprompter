@@ -19,7 +19,7 @@ export const predictPositionByLLM = async (new_speech, speech_history, previous_
         data.new_speech = "";
     }
 
-    data.position = parseInt(data.position);
+    data.position = data.position ? parseInt(data.position) : "";
 
     return data; // {"position": "...", "new_speech": "..."}
 }

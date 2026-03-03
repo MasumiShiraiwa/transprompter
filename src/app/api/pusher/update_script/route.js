@@ -6,10 +6,10 @@ const pusherServer = getPusherInstance();
 export const dynamic = 'force-dynamic'; // defaults to auto
 
 export async function POST(req) {
-  const { script, speaker_list } = await req.json();
+  const { script, speaker_list, project_id } = await req.json();
   console.log("received update_script event:", script);
   try {
-    await pusherServer.trigger("private-update-script", "evt::update-script", {
+    await pusherServer.trigger(`private-update-script-${project_id}`, `evt::update-script-${project_id}`, {
       script: script,
       speaker_list: speaker_list,
     });

@@ -1,3 +1,4 @@
+// OpenAI APIを使用して、文章位置を推定する。
 import { NextResponse } from 'next/server';
 import { getAzureOpenAIClient, estimatePosition } from '@/app/utils/azure_opai';
 

@@ -6,10 +6,10 @@ const pusherServer = getPusherInstance();
 export const dynamic = 'force-dynamic'; // defaults to auto
 
 export async function POST(req) {
-  const { mode } = await req.json();
+  const { mode, project_id } = await req.json();
   console.log("received mode_switch event:", mode);
   try {
-    await pusherServer.trigger("private-mode-switch", "evt::mode-switch", {
+    await pusherServer.trigger(`private-mode-switch-${project_id}`, `evt::mode-switch-${project_id}`, {
       mode: mode,
     });
     console.log("mode_switch event sent");

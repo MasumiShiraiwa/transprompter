@@ -1,14 +1,51 @@
 "use client"
 
-export default function Grouping({script, setScript, groupIndex, setGroupIndex, yjsInstance}) {
+import { useEffect } from 'react';
+
+export default function Grouping({project_id, script, setScript, groupId, setGroupId, yjsInstance}) {
+
+    // idをglobalIndexに変換する(GroupId用)
+    const id2Index = (id) => {
+        let globalIndex = 0;
+        for(let group of script) {
+            for(let line of group) {
+                if(line.id === id) {
+                    return globalIndex;
+                }
+                globalIndex++;
+            }
+        }
+        return null;
+    };
+
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            switch(event.key){
+                case 'G':
+                    handleGroupSettings();
+                    break;
+                case 'g':
+                    handleGroupSettings();
+                    break;
+                case 'U':
+                    handleGroupReset();
+                    break;
+                case 'u':
+                    handleGroupReset();
+                    break;
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [groupId])
 
     // グループ設定ボタンを押したときの処理
     const handleGroupSettings = async () => {
-        console.log("script", script);
-        const sortedGroupIndex = sortGroupIndex();
+        const sortedGroupId = sortGroupId();
         // 念のため連続かどうかを確認する。
-        if (!isConsecutive(sortedGroupIndex)) {
-            alert("グループに属する行が連続していません。");
+        if (!isConsecutive(sortedGroupId)) {
             return;
         }
 
@@ -20,13 +57,12 @@ export default function Grouping({script, setScript, groupIndex, setGroupIndex, 
 
         script.forEach((group, i) => {
 
-            if (currentIndex >= sortedGroupIndex[0] && currentIndex <= sortedGroupIndex[sortedGroupIndex.length - 1]){
+            if (currentIndex >= id2Index(sortedGroupId[0]) && currentIndex <= id2Index(sortedGroupId[sortedGroupId.length - 1])){
                 if (tempTargetGroup.length === 0) {
                     leftGroupIndex = i;
                 }
                 rightGroupIndex = i;
                 tempTargetGroup = tempTargetGroup.concat(group);
-                console.log("tempTargetGroup", tempTargetGroup);
                 currentIndex += group.length;
                 return;
             }else{
@@ -48,15 +84,14 @@ export default function Grouping({script, setScript, groupIndex, setGroupIndex, 
         }
         console.log("newScript", newScript);
         setScript(newScript);
-        setGroupIndex([]);
+        // setGroupId([]);
 
     }
 
     // グループ解除ボタンを押したときの処理
     const handleGroupReset = async () => {
-        const sortedGroupIndex = sortGroupIndex();
-        if (!isGrouped(sortedGroupIndex)) {
-            alert("グループに属する行が含まれていません。");
+        // const sortedGroupId = sortGroupId();
+        if (!isGrouped(groupId)) {
             return;
         }
 
@@ -72,22 +107,20 @@ export default function Grouping({script, setScript, groupIndex, setGroupIndex, 
                 currentIndex += groupLength;
                 return;
             }
-            const groupIndices = [];
+            const groupIds = [];
             for (let j = 0; j < groupLength; j++) {
-                groupIndices.push(currentIndex + j);
+                groupIds.push(group[j].id);
             }
 
             // このグループが選択されており(groupIndexに含まれる)場合
             // すべてのインデックスが含まれているかチェックする
-            const isTargetGroup = groupIndices.every(idx => sortedGroupIndex.includes(idx));
-
-            
+            const isTargetGroup = groupIds.every(id => groupId.includes(id));
 
             if (isTargetGroup) {
                 // グループを解除して個別の要素にする
                 // ["A", "B"] -> ["A"], ["B"]
-                group.forEach(text => {
-                    newScript.push([text]);
+                group.forEach(line => {
+                    newScript.push([line]);
                 });
 
                 yjsInstance.splitGroup(i);
@@ -100,9 +133,9 @@ export default function Grouping({script, setScript, groupIndex, setGroupIndex, 
         });
         console.log("newScript", newScript);
         setScript(newScript);
-        setGroupIndex([]);
+        setGroupId([]);
 
-        const body = { script: newScript, speaker_list: null };
+        const body = { script: newScript, speaker_list: null, project_id: project_id };
         const res_update_script = await fetch('/api/pusher/update_script', {
             method: 'POST',
             headers: {
@@ -116,9 +149,10 @@ export default function Grouping({script, setScript, groupIndex, setGroupIndex, 
     // groupIndexが連続した数値かどうかを判定する
     const isConsecutive = (arr) => {
         if (arr.length < 2) return false;
-        const sorted = [...arr].sort((a, b) => a - b);
-        for (let i = 1; i < sorted.length; i++) {
-            if (sorted[i] !== sorted[i-1]+1) {
+        const sorted = [...arr].sort((a, b) => id2Index(a) - id2Index(b));
+        const sortedIndex = sorted.map(id => id2Index(id));
+        for (let i = 1; i < sortedIndex.length; i++) {
+            if (sortedIndex[i] !== sortedIndex[i-1]+1) {
                 return false;
             }
         }
@@ -135,13 +169,13 @@ export default function Grouping({script, setScript, groupIndex, setGroupIndex, 
             // グループ化されている（要素数が2以上）場合のみチェック
             if (groupLength > 1) {
                 // 現在のグループのインデックス配列を作成
-                const groupIndices = [];
+                const groupIds = [];
                 for (let j = 0; j < groupLength; j++) {
-                    groupIndices.push(currentIndex + j);
+                    groupIds.push(group[j].id);
                 }
 
                 // arr（groupIndex）がこのグループを完全に含んでいるかチェック
-                const isThisGroupIncluded = groupIndices.every(idx => arr.includes(idx));
+                const isThisGroupIncluded = groupIds.every(id => arr.includes(id));
 
                 if (isThisGroupIncluded) {
                     return true;
@@ -153,10 +187,9 @@ export default function Grouping({script, setScript, groupIndex, setGroupIndex, 
     }
 
     // groupIndexを昇順にソートする
-    const sortGroupIndex = () => {
-        let arr = [...groupIndex];
-        arr.sort((a, b) => a - b);
-        setGroupIndex(arr);
+    const sortGroupId = () => {
+        let arr = [...groupId];
+        arr.sort((a, b) => id2Index(a) - id2Index(b));
         return arr;
     }
 
@@ -164,10 +197,10 @@ export default function Grouping({script, setScript, groupIndex, setGroupIndex, 
         <div>
             <div className="grid grid-cols-3 gap-2 mt-4">
                 <div>
-                    {groupIndex.length > 0 ? (
+                    {groupId.length > 0 ? (
                         <button
                             className="w-full py-2 px-4 rounded-lg font-bold bg-gray-200 hover:bg-gray-300 text-gray-700 transition-colors"
-                            onClick={() => setGroupIndex([])}
+                            onClick={() => setGroupId([])}
                         >
                             選択を解除
                         </button>
@@ -175,7 +208,7 @@ export default function Grouping({script, setScript, groupIndex, setGroupIndex, 
 
                 </div>
                 <div>
-                    {isConsecutive(groupIndex) ? (
+                    {isConsecutive(groupId) ? (
                         <button
                             className="w-full py-2 px-4 rounded-lg font-bold bg-blue-500 hover:bg-blue-600 text-white transition-colors"
                             onClick={() => handleGroupSettings()}
@@ -186,12 +219,12 @@ export default function Grouping({script, setScript, groupIndex, setGroupIndex, 
                 </div>
                 <div>
                     {/* groupIndexに同じグループに属する行がすべて含まれていたら、グループ解除ボタンを表示する */}
-                    {isGrouped(groupIndex) && (
+                    {isGrouped(groupId) && (
                         <button
                             className="w-full py-2 px-4 rounded-lg font-bold bg-gray-200 hover:bg-gray-300 text-gray-700 transition-colors"
                             onClick={() => handleGroupReset()}
                         >
-                            解除
+                            グループ解除
                         </button>
                     )}
                 </div>

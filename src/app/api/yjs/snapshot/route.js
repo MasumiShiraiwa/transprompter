@@ -3,13 +3,15 @@
 
 import { NextResponse } from 'next/server';
 import * as Y from 'yjs';
-import { buildDoc } from '@/app/utils/yjs/buildDoc';
+import { buildSnapshotDoc } from '@/app/utils/yjs/buildDoc';
 // import { ydoc } from '@/app/yjs/server'; // サーバーサイドでシングルトンとしてY.Docインスタンスを保持する
 import fs from 'fs/promises';
 import path from 'path';
 
 export async function POST(request) {
-    
+    const body = await request.json();
+    const script = body.script;
+    const project_id = body.project_id;
     const logPath = path.join(process.cwd(), 'src', 'scripts', 'yjs.log');
     const logContent = await fs.readFile(logPath, 'utf8');
     
@@ -23,17 +25,18 @@ export async function POST(request) {
     // //     Y.applyUpdate(ydoc, updateUint8);
         
     // // }
-    const ydoc = await buildDoc();
-    const diffupdate = Y.encodeStateAsUpdate(ydoc);
-    const diffupdateArray = Array.from(diffupdate);
-    const diffupdateUint8 = new Uint8Array(diffupdateArray);
-    const diffupdateObject = {
-        sequence: 0,
-        update: diffupdateUint8
-    };
-    console.log("diffupdateObject", diffupdateObject);
-    await fs.writeFile(logPath, "", { flag: 'w' });
-    const diffupdateJson = JSON.stringify(diffupdateObject) + "\n";
-    await fs.appendFile(logPath, diffupdateJson);
+    // const ydoc = await buildDoc();
+    // const diffupdate = Y.encodeStateAsUpdate(ydoc);
+    // const diffupdateArray = Array.from(diffupdate);
+    // const diffupdateUint8 = new Uint8Array(diffupdateArray);
+    // const diffupdateObject = {
+    //     sequence: 0,
+    //     update: diffupdateUint8
+    // };
+    // console.log("diffupdateObject", diffupdateObject);
+    // await fs.writeFile(logPath, "", { flag: 'w' });
+    // const diffupdateJson = JSON.stringify(diffupdateObject) + "\n";
+    // await fs.appendFile(logPath, diffupdateJson);
+    await buildSnapshotDoc(script, project_id);
     return NextResponse.json({ message: "Snapshot received", }, { status: 200 });
 }

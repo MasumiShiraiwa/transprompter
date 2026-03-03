@@ -17,6 +17,19 @@ export default function CueCard( {script, speaker_list, current_position, perfor
     const [fontSize, setFontSize] = useState(48); // 初期のフォントサイズ（px）
     const containerRef = useRef(null);
 
+    const id2Index = (id) => {
+        let globalIndex = 0;
+        for(let group of script) {
+            for(let line of group) {
+                if(line.id === id) {
+                    return globalIndex;
+                }
+            }
+            globalIndex += group.length;
+        }
+        return null;
+    }
+
     // script変更時やcurrent_position変更時にフォントサイズを調整
     useEffect(() => {
         if (!containerRef.current || !script || script.length === 0) return;
@@ -26,7 +39,7 @@ export default function CueCard( {script, speaker_list, current_position, perfor
         let activeGroupStartIdx = 0;
         let idx = 0;
         for (let group of script) {
-            if (idx <= current_position && idx + group.length > current_position) {
+            if (idx <= id2Index(current_position) && idx + group.length > id2Index(current_position)) {
                 activeGroup = group;
                 activeGroupStartIdx = idx;
                 break;
@@ -64,7 +77,7 @@ export default function CueCard( {script, speaker_list, current_position, perfor
 
             for (let i = 0; i < activeGroup.length; i++) {
                 const lineContent = activeGroup[i];
-                const speakerName = speaker_list[activeGroupStartIdx + i];
+                const speakerName = speaker_list.get(lineContent.id);
 
                 // --- スピーカー名の高さ計算 ---
                 ctx.font = `bold ${speakerFontSize}px sans-serif`;
@@ -79,7 +92,7 @@ export default function CueCard( {script, speaker_list, current_position, perfor
 
                 // --- 本文の高さ計算 ---
                 ctx.font = `bold ${contentFontSize}px sans-serif`;
-                const contentSegments = lineContent ? lineContent.replace(/\|/g, "\n").split('\n') : [""];
+                const contentSegments = lineContent ? lineContent.text.replace(/\|/g, "\n").split('\n') : [""];
 
                 let contentHeight = 0;
                 for (let segment of contentSegments) {
@@ -106,11 +119,6 @@ export default function CueCard( {script, speaker_list, current_position, perfor
 
     return (
         <div className="bg-gray-50 p-4 rounded-lg h-full flex flex-col">
-            <div className="flex justify-between items-center mb-4">
-                <div>
-                    <h2 className="text-xl font-semibold text-gray-700">台本パネル</h2>
-                </div>
-            </div>
             <div 
                     ref={containerRef}
                     className="bg-white border-2 border-gray-200 rounded-lg flex-1 overflow-y-auto p-4 space-y-1"
@@ -124,13 +132,13 @@ export default function CueCard( {script, speaker_list, current_position, perfor
                         (() => {
                                 let globalIndex = 0;
                                 for(let i = 0; i < script.length; i++){
-                                    if(globalIndex <= current_position && globalIndex + script[i].length > current_position){
+                                    if(globalIndex <= id2Index(current_position) && globalIndex + script[i].length > id2Index(current_position)){
                                         return script[i].map((line, localIdx) => {
                                             return (
                                                 <div key={localIdx}>
                                                     <div className="text-sm font-bold mb-2" style={{ fontSize: `${fontSize * 0.8}px` }}>
-                                                        <span style={{ backgroundColor: color_list[performers_list.indexOf(speaker_list[globalIndex + localIdx]) % color_list.length], padding: '0.2em 0.6em', borderRadius: '0.1em', display: 'inline-block' }}>
-                                                            (  {speaker_list[globalIndex + localIdx]} )
+                                                        <span style={{ backgroundColor: color_list[performers_list.indexOf(speaker_list.get(line.id)) % color_list.length], padding: '0.2em 0.6em', borderRadius: '0.1em', display: 'inline-block' }}>
+                                                            {speaker_list.get(line.id)}
                                                         </span>
                                                     </div>
                                                     <p
@@ -138,7 +146,7 @@ export default function CueCard( {script, speaker_list, current_position, perfor
                                                         style={{ fontSize: `${fontSize}px` }}
                                                     >
                                                     {line?
-                                                        <span>{line.replace(/\|/g, "\n")}</span>
+                                                        <span>{line.text.replace(/\|/g, "\n")}</span>
                                                     :
                                                     null
                                                     }

@@ -6,10 +6,10 @@ const pusherServer = getPusherInstance();
 export const dynamic = 'force-dynamic'; // defaults to auto
 
 export async function POST(req) {
-  const { mode } = await req.json();
+  const { mode, project_id } = await req.json();
   console.log("received prompter_switch event:", mode);
   try {
-    await pusherServer.trigger("private-prompter-switch", "evt::prompter-switch", {
+    await pusherServer.trigger(`private-prompter-switch-${project_id}`, `evt::prompter-switch-${project_id}`, {
       mode: mode,
     });
     console.log("prompter_switch event sent");

@@ -8,7 +8,7 @@ const pusherServer = getPusherInstance();
 export const dynamic = 'force-dynamic'; // defaults to auto
 
 export async function POST(req) {
-  const { id } = await req.json();
+  const { id, project_id } = await req.json();
   console.log("received template event:", id);
   try{
         const filePath = path.join(process.cwd(), 'src', 'scripts', 'template_list.json');
@@ -16,7 +16,7 @@ export async function POST(req) {
         const data_list = JSON.parse(data);
         const template = data_list.find(item => item.id === id);
         console.log("template:", template);
-        await pusherServer.trigger("private-cue-card-template", "evt::cue-card-template", {
+        await pusherServer.trigger(`private-cue-card-template-${project_id}`, `evt::cue-card-template-${project_id}`, {
             content: template.content,
         });
         return Response.json({ message: "Template sent successfully" }, { status: 200 });

@@ -4,10 +4,10 @@ import { getPusherInstance } from "@/app/utils/pusher/server";
 const pusherServer = getPusherInstance();
 
 export async function POST(req) {
-    const { cueCard } = await req.json();
+    const { cueCard, project_id } = await req.json();
     console.log("received handwrite cue card data size:", cueCard.length, "bytes");
     try{
-        await pusherServer.trigger("private-handwrite-cue-card", "evt::handwrite-cue-card", {
+        await pusherServer.trigger(`private-handwrite-cue-card-${project_id}`, `evt::handwrite-cue-card-${project_id}`, {
             cueCard: cueCard,
         });
 

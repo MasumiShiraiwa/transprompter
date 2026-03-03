@@ -3,11 +3,14 @@ import fs from 'fs';
 import path from 'path';
 
 export default function Page() {
-    // プロジェクトルートからの相対パスを使用
-    const filePath = path.join(process.cwd(), 'src', 'scripts', 'script_sample.txt');
-    var text = fs.readFileSync(filePath, 'utf8');
-    var lines = text.toString().split('\n'); // 円マークではなく通常のバックスラッシュ
-    console.log(lines);
+    let lines = [];
+    try {
+        const filePath = path.join(process.cwd(), 'src', 'scripts', 'script_sample.txt');
+        const text = fs.readFileSync(filePath, 'utf8');
+        lines = text.toString().split('\n');
+    } catch (e) {
+        console.warn('script_sample.txt not found:', e.message);
+    }
 
     return (
         <div>

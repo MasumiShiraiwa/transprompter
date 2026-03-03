@@ -2,21 +2,24 @@ import * as Y from 'yjs';
 
 
 export class YjsInstance {
-    constructor() {
+    constructor(project_id = null) {
+        this.project_id = project_id;
         this.Y = Y;
         this.ydoc = new this.Y.Doc();
         this.yScriptArray = this.ydoc.getArray('script');
         this.yGroupArray = this.ydoc.getArray('group');
-        this.ySpeakerArray = this.ydoc.getArray('speaker');
+        // this.ySpeakerArray = this.ydoc.getArray('speaker'); 
+        this.ySpeakerMap = this.ydoc.getMap('speaker_map');
         this.yModeMap = this.ydoc.getMap();
-        this.localUpdateHandler();
+        this.localUpdateHandler();  
     }
 
     // 初期化時の同期
     async sync() {
-        console.log("sync");
+        console.log("sync is called", this.project_id);
         const res_sync = await fetch('/api/yjs/sync', {
-            method: 'GET',
+            method: 'POST',
+            body: JSON.stringify({ project_id: this.project_id }),
         });
         const data_sync = await res_sync.json();
         const update = data_sync.update;
@@ -27,12 +30,13 @@ export class YjsInstance {
 
     // ローカル更新時の処理(Websocketでローカルの更新を送信する)
     async localUpdateHandler() {
+        console.log("project_id in YjsInstance.localUpdateHandler", this.project_id);
         if(!this.ydoc || !this.Y) return;
         this.ydoc.on("update", async (update, origin) => {
             if(origin === "remote") return;
             await fetch('/api/yjs/update', {
                 method: 'POST',
-                body: JSON.stringify({update: Array.from(update)}),
+                body: JSON.stringify({update: Array.from(update), project_id: this.project_id}),
             });
         });
     }
@@ -43,18 +47,30 @@ export class YjsInstance {
         this.Y.applyUpdate(this.ydoc, remote_update, "remote");
     }
 
+    /** 複数の変更を1回の update イベントにまとめる */
+    transact(fn) {
+        if (!this.ydoc) return;
+        this.ydoc.transact(fn);
+    }
+
     // SET関数
 
     // スクリプトの更新(Group単位)(lineとは、Group内の配列)
     async updateScript(groupIdx, line) {
         console.assert(Array.isArray(line) && line.length > 0, "line must be a non-empty array");
-        this.yScriptArray.delete(groupIdx, 1);
-        this.yScriptArray.insert(groupIdx, [line]);
+        this.ydoc.transact(() => {
+            this.yScriptArray.delete(groupIdx, 1);
+            this.yScriptArray.insert(groupIdx, [line]);
+        });
     }
 
     async insertScript(groupIdx, line) {
         console.assert(Array.isArray(line) && line.length > 0, "line must be a non-empty array");
         this.yScriptArray.insert(groupIdx, [line]);
+    }
+
+    async pushScript(line){
+        this.yScriptArray.insert(this.yScriptArray.length, [line]);
     }
 
     async deleteScript(groupIdx) { // Gruop全体の削除
@@ -63,38 +79,35 @@ export class YjsInstance {
 
     async mergeGroup(leftGroupIdx, rightGroupIdx, line) {
         console.assert(Array.isArray(line) && line.length > 0, "line must be a non-empty array");
-        this.yScriptArray.delete(leftGroupIdx, rightGroupIdx - leftGroupIdx + 1);
-        this.yScriptArray.insert(leftGroupIdx, [line]);
+        this.ydoc.transact(() => {
+            this.yScriptArray.delete(leftGroupIdx, rightGroupIdx - leftGroupIdx + 1);
+            this.yScriptArray.insert(leftGroupIdx, [line]);
+        });
     }
 
     async splitGroup(groupIdx) {
         const line = this.yScriptArray.get(groupIdx);
-        this.yScriptArray.delete(groupIdx);
-        for(let i = 0; i < line.length; i++){
-            this.yScriptArray.insert(groupIdx + i, [[line[i]]]);
-        }
+        this.ydoc.transact(() => {
+            this.yScriptArray.delete(groupIdx);
+            for(let i = 0; i < line.length; i++){
+                this.yScriptArray.insert(groupIdx + i, [[line[i]]]);
+            }
+        });
     }
 
     // スピーカーの更新
-    async updateSpeaker(index, speaker) {
-        console.assert(typeof index === 'number', "index must be a number");
-        this.ySpeakerArray.delete(index, 1);
-        this.ySpeakerArray.insert(index, [speaker]);
+    // async updateSpeaker(index, speaker) {
+    //     console.assert(typeof index === 'number', "index must be a number");
+    //     this.ySpeakerArray.delete(index, 1);
+    //     this.ySpeakerArray.insert(index, [speaker]);
+    // }
+    async updateSpeaker(id, speaker) {
+        console.assert(typeof id === 'string', "id must be a string");
+        this.ySpeakerMap.set(id, speaker);
     }
 
-    async insertSpeaker(index, speaker) {
-        console.assert(typeof index === 'number', "index must be a number");
-        // this.ySpeakerArray.delete(index, 1);
-        this.ySpeakerArray.insert(index, [speaker]);
-    }
-
-    async emptySpeaker(index) {
-        this.ySpeakerArray.delete(index, 1);
-        this.ySpeakerArray.insert(index, [""]);
-    }
-
-    async deleteSpeaker(index) {
-        this.ySpeakerArray.delete(index);
+    async deleteSpeaker(id) {
+        this.ySpeakerMap.delete(id);
     }
 
     // 現在位置を更新する
@@ -117,11 +130,14 @@ export class YjsInstance {
         return this.yScriptArray.toArray();
     }
     // スピーカーを取得
-    getSpeaker(i = null) {
-        if(i !== null) return Array.from(this.ySpeakerArray.get(String(i)));
-        return this.ySpeakerArray.toArray(); // Array.from(this.ySpeakerArray.values())は、Array.from(this.ySpeakerArray.toArray())と同じ
+    // getSpeaker(i = null) {
+    //     if(i !== null) return Array.from(this.ySpeakerArray.get(String(i)));
+    //     return this.ySpeakerArray.toArray(); // Array.from(this.ySpeakerArray.values())は、Array.from(this.ySpeakerArray.toArray())と同じ
+    // }
+    getSpeaker(id = null) {
+        if(id !== null) return this.ySpeakerMap.get(id);
+        return this.ySpeakerMap.toJSON();
     }
-
     // 現在位置を取得
     getCurrentPosition() {
         return this.yModeMap.get('current_position');

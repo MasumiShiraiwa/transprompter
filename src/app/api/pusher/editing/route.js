@@ -6,10 +6,10 @@ const pusherServer = getPusherInstance();
 export const dynamic = 'force-dynamic'; // defaults to auto
 
 export async function POST(req) {
-  const { globalIdx, groupIdx, localIdx, text, speaker } = await req.json();
+  const { globalIdx, groupIdx, localIdx, text, speaker, project_id } = await req.json();
   console.log("received editing event:", globalIdx, groupIdx, localIdx, text, speaker);
   try {
-    await pusherServer.trigger("private-editing", "evt::editing", {
+    await pusherServer.trigger(`private-editing-${project_id}`, `evt::editing-${project_id}`, {
       globalIdx: globalIdx,
       groupIdx: groupIdx,
       localIdx: localIdx,

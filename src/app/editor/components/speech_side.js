@@ -7,14 +7,30 @@ import Content from './speech_side_utils/content';
 import AudioRecognition from './speech_side_utils/audio_recognition';
 import { predictPositionByVector, predictPositionByLLM } from '@/app/utils/predict_sentence_position';
 
-export default function SpeechSide( {script, speechHistory, setSpeechHistory, isRecognizing, setIsRecognizing, current_position, setCurrentPosition, sentence_idx_max} ) {
+export default function SpeechSide( {script, speechHistory, setSpeechHistory, isRecognizing, setIsRecognizing, current_position, setCurrentPosition, sentence_idx_max, cueCardMode} ) {
     const [speech, setSpeech] = useState({text: null, isSentenceCompleted: false});
     const [score_list, setScoreList] = useState({}); // 削除予定{char_idx1: {score:, sentence_idx:}, char_idx2: {score:, sentence_idx:}, ...}
     const [weigh_list, setWeighList] = useState({}); // 削除予定{char_idx1: {score:}, char_idx2: {score:}, ...}
     const [raw_score_list, setRawScoreList] = useState({}); // 削除予定{char_idx1: {score:, sentence_idx:}, char_idx2: {score:, sentence_idx:}, ...}
     const useLLM = true; // LLMの使用をONにするかを決める変数
 
+    const id2Index = (id) => {
+        for (const k of Object.keys(script)) {
+            if (script[k].id === id) {
+                return Number(k);
+            }
+        }
+        return null;
+    };
 
+    const index2Id = (index) => {
+        for (let k of Object.keys(script)) {
+            if (Number(k) === index) {
+                return script[k].id;
+            }
+        }
+        return null;
+    };
 
     // 新しい発話内容が入力されたら、類似度検索を行う。
     useEffect(() => {
@@ -82,11 +98,15 @@ export default function SpeechSide( {script, speechHistory, setSpeechHistory, is
         async function fetchPositionByLLM() {
             if(speech.text === null)return;
             let start_time = performance.now(); // debug
-            const result = await predictPositionByLLM(speech, speechHistory.join('。'), current_position, script);
-            console.log("predict time[ms]", performance.now() - start_time, speech); // debug
+            const result = await predictPositionByLLM(speech, speechHistory.join('。'), id2Index(current_position), Object.keys(script).map(k => {return {index: k, text: script[k].text}}));
+            console.log("predict time[ms]", performance.now() - start_time, speech, result.position); // debug
             const new_speech = result.new_speech;
+            if(result.position !== ""){
+                console.log("result.position", result.position);
+                setCurrentPosition(index2Id(result.position)); 
+            }
             if (new_speech !== "") {
-                setCurrentPosition(result.position);
+                // setCurrentPosition(index2Id(result.position)); 
                 setSpeechHistory(prev => [...prev, new_speech]);
             }
             // console.log("sentence_idx", sentence_idx, "new_speech", new_speech);
@@ -170,11 +190,60 @@ export default function SpeechSide( {script, speechHistory, setSpeechHistory, is
 
     }, []);
 
+    // 音声認識ボタンを押したときの処理
+    const handleRecognitionButton = async () => {
+        if (!cueCardMode) { // ナレーションモードの場合は、音声認識を開始する。
+            setFirstSpeechHistory();
+            setIsRecognizing(!isRecognizing);
+        }else{
+            setIsRecognizing(false);
+            alert("カンペモードの場合は、音声認識を開始できません。");
+        }
+    }
+
+    const setFirstSpeechHistory = () => {
+        let temp_speech_history = [];
+        for (const [k, v] of Object.entries(script)) {
+            if(v.id === current_position){
+                temp_speech_history.push(v.text);
+                break;
+            }
+            temp_speech_history.push(v.text);
+        };
+        console.log("temp_speech_history", temp_speech_history);
+        setSpeechHistory(temp_speech_history);
+    }
+
     return (
         <div className="h-full overflow-y-auto">
             <div className="min-h-full flex flex-col space-y-3 p-2">
+                {/* 音声認識ボタン */}
+                <button 
+                    className={`flex items-center justify-center w-full font-bold my-3 py-3 px-6 rounded-lg transition duration-200 ${
+                        isRecognizing 
+                            ? 'bg-red-500 hover:bg-red-600 text-white' 
+                            : 'bg-green-500 hover:bg-green-600 text-white'
+                    }`}
+                    onClick={() => handleRecognitionButton()}
+                >
+                    {isRecognizing ? (
+                        <>
+                            <svg className="w-6 h-6 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 012 0v6a1 1 0 11-2 0V7zM12 7a1 1 0 012 0v6a1 1 0 11-2 0V7z" clipRule="evenodd" />
+                            </svg>
+                            認識停止
+                        </>
+                    ) : (
+                        <>
+                            <svg className="w-6 h-6 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
+                            </svg>
+                            音声認識開始
+                        </>
+                    )}
+                </button>
                 <div className="flex-shrink-0">
-                    <Content content={speech.text} />
+                    <Content content={speech.text} isRecognizing={isRecognizing} setIsRecognizing={setIsRecognizing} cueCardMode={cueCardMode} />
                 </div>
                 <div className="flex-1 min-h-0">
                     <AudioRecognition setSpeech={setSpeech} isRecognizing={isRecognizing} setIsRecognizing={setIsRecognizing} />

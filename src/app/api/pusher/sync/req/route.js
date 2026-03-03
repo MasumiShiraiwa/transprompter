@@ -4,10 +4,11 @@ const pusherServer = getPusherInstance();
 
 export const dynamic = 'force-dynamic'; // defaults to auto
 
-export async function GET() {
+export async function GET(req) {
+  const { project_id } = await req.json();
   console.log("received sync request event:");
   try {
-    await pusherServer.trigger("private-sync-request", "evt::sync-request", {
+    await pusherServer.trigger(`private-sync-request-${project_id}`, `evt::sync-request-${project_id}`, {
     });
     console.log("sync request event sent");
 
